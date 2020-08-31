@@ -27,10 +27,11 @@ pio run -e TinyBLE -t upload && pio device monitor
 ## Example VM code
 
 ```cpp
-    PUSH(1000);
-    LABEL(loop);
-        DEC(1);
-        DUP();
-        JNZ(loop);
-    HALT();
+    // === Count down from 1000 to 0
+    PUSH(1000);     // Push 1000 to VM stack
+    LABEL(loop);    // Store currect code position to label "loop"
+        DEC(1);     // Decrement stack top
+        DUP();      // Duplicate top stack value
+        JNZ(loop);  // Consume stack top. If it's non-zero, jump to "loop" label
+    HALT();         // Halt machine
 ```
