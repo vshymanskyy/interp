@@ -1,7 +1,7 @@
 # interp
 Testing interpreter dispatch methods: `Switching`, `Direct Threaded Code`, `Indirect Threaded Code`, `Tail-Calls` and `Inlining`.
 
-Supports `x86`, `x86-64`, `arm`, `xtensa` architectures.
+Supports `x86`, `x86-64`, `arm`, `rv32`, `xtensa` architectures.
 
 ## Building on Linux
 

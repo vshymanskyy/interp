@@ -186,6 +186,19 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
                                              ".CONT_" ID ":"                                EOL \
                                              : "=r"(imm));
         #define JUMP(addr)      asm volatile("mov pc,%0" : : "r"(addr));
+    #elif defined(__riscv)
+        #define OP_ALIGN        4
+        #define ASM_GUARD(code) asm(""); code; asm("");
+        #define ASM_GET_IMM(ID) register size_t imm;                                            \
+                                asm volatile("auipc x10, 0"                                 EOL \
+                                             "lw %0, 8(x10)"                                EOL \
+                                             "j   .CONT_" ID                                EOL \
+                                             ".long (" STRINGIFY(PLACEHOLDER) " + " ID ")"  EOL \
+                                             ".CONT_" ID ":"                                EOL \
+                                             : "=r"(imm) : /*inputs*/ : "x10");
+        #define ASM_ALIGN_ZERO()        asm(".align " STRINGIFY(OP_ALIGN))
+        #define ASM_ALIGN_NOP()         asm(".align " STRINGIFY(OP_ALIGN))
+        #define JUMP(addr)      asm volatile("c.jr %0" : : "r"(addr));
     #elif defined(__xtensa__)
         #define OP_ALIGN        4
         #define ASM_GUARD(code) while(dummy) { code; asm(""); }

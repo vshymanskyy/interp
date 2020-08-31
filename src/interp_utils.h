@@ -81,6 +81,13 @@ void mempatch(void* dest, size_t len, size_t dummy, size_t value) {
 
             return heap_caps_malloc(ALLOC_EXEC_PAGE_SIZE, MALLOC_CAP_EXEC);
         }
+    #elif defined(__riscv)
+        static char gProg[ALLOC_EXEC_PAGE_SIZE];
+        static
+        void* malloc_exec()
+        {
+            return (void*)gProg;
+        }
     #elif defined(__linux__)
         #include <sys/mman.h>
 
