@@ -4,12 +4,13 @@
 #include <string.h>
 #include <unistd.h>
 
-//#define USE_DTC
-//#define USE_TTC
-//#define USE_SWITCH
-//#define USE_TAIL_CALLS
-//#define USE_CALLS
-#define USE_INLINE
+// Select interpreter mode:
+//#define USE_DTC           // Direct Threaded Code
+//#define USE_TTC           // Token (Indirect) Threaded Code
+//#define USE_SWITCH        // Switching
+//#define USE_TAIL_CALLS    // Tail Calls
+//#define USE_CALLS         // Calls Loop
+#define USE_INLINE          // Machine Code Inlining
 
 #define DBG_PRINTF printf
 
