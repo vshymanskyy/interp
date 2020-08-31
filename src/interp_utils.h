@@ -82,12 +82,7 @@ void mempatch(void* dest, size_t len, size_t dummy, size_t value) {
             return heap_caps_malloc(ALLOC_EXEC_PAGE_SIZE, MALLOC_CAP_EXEC);
         }
     #elif defined(__riscv)
-        static char gProg[ALLOC_EXEC_PAGE_SIZE];
-        static
-        void* malloc_exec()
-        {
-            return (void*)gProg;
-        }
+        #define USE_ALLOC_STATIC
     #elif defined(__linux__)
         #include <sys/mman.h>
 
@@ -102,13 +97,21 @@ void mempatch(void* dest, size_t len, size_t dummy, size_t value) {
     #elif defined(WIN32)
         #error Win32 not implemented        // TODO
     #else
-        static
-        void* malloc_exec()
-        {
-            return (void*)ALIGN_UP(malloc(ALLOC_EXEC_PAGE_SIZE), 4);
-        }
+        #define USE_ALLOC_HEAP
     #endif
 #else
+    #define USE_ALLOC_HEAP
+#endif
+
+// Generic
+#if defined(USE_ALLOC_STATIC)
+    static
+    void* malloc_exec()
+    {
+        static char gProg[ALLOC_EXEC_PAGE_SIZE];
+        return (void*)ALIGN_UP(gProg, 4);
+    }
+#elif defined(USE_ALLOC_HEAP)
     static
     void* malloc_exec()
     {
