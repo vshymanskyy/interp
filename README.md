@@ -29,7 +29,7 @@ pio run -e TinyBLE -t upload && pio device monitor
 ```cpp
     // === Count down from 1000 to 0
     PUSH(1000);     // Push 1000 to VM stack
-    LABEL(loop);    // Store currect code position to label "loop"
+    LABEL(loop);    // Store current code position to label "loop"
         DEC(1);     // Decrement stack top
         DUP();      // Duplicate top stack value
         JNZ(loop);  // Consume stack top. If it's non-zero, jump to "loop" label
