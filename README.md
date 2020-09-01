@@ -1,5 +1,5 @@
 # interp
-Testing interpreter dispatch methods: `Switching`, `Direct Threaded Code`, `Indirect Threaded Code`, `Tail-Calls` and `Inlining`.
+Testing interpreter [dispatch methods](http://www.cs.toronto.edu/~matz/dissertation/matzDissertation-latex2html/node6.html): `Switching`, `Direct Threaded Code`, `Indirect Threaded Code`, `Tail-Calls` and machine code `Inlining`.
 
 Supports `x86`, `x86-64`, `arm`, `aarch64`, `mips`, `mipsel`, `rv32`, `rv64`, `xtensa` architectures.
 
@@ -66,4 +66,3 @@ sudo apt install gcc-riscv64-linux-gnu libc6-dev-riscv64-cross
 riscv64-linux-gnu-gcc -static main.c -I./src -Os -fPIC -o interp-rv64
 qemu-riscv64-static ./interp-rv64
 ```
-
