@@ -186,6 +186,22 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
                                              ".CONT_" ID ":"                                EOL \
                                              : "=r"(imm));
         #define JUMP(addr)      asm volatile("mov pc,%0" : : "r"(addr));
+    #elif defined(__mips__)
+        #define OP_ALIGN        4
+        #define HALT_SIZE       128
+        #define ASM_GUARD(code) asm(""); code; asm("");
+        #define ASM_GET_IMM(ID) register size_t imm;                                            \
+                                asm volatile("move $6, $ra"                                 EOL \
+                                             "bal GetIP_" ID                                EOL \
+                                             ".long (" STRINGIFY(PLACEHOLDER) " + " ID ")"  EOL \
+                                             "GetIP_" ID ":"                                EOL \
+                                             "move $7, $ra"                                 EOL \
+                                             "move $ra, $6"                                 EOL \
+                                             "lw %0, 0($7)"                                 EOL \
+                                             : "=r"(imm) : /*inputs*/ : "$6", "$7");
+        #define ASM_ALIGN_ZERO() // always aligned on mips
+        #define ASM_ALIGN_NOP()  // always aligned on mips
+        #define JUMP(addr)      asm volatile("jr %0" : : "r"(addr));
     #elif defined(__riscv)
         #define OP_ALIGN        4
         #define ASM_GUARD(code) asm(""); code; asm("");
@@ -233,6 +249,10 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
         #ifndef ASM_ALIGN_NOP
             #define ASM_ALIGN_NOP()         asm(".align " STRINGIFY(OP_ALIGN) ",,16")
         #endif
+    #endif
+        
+    #ifndef HALT_SIZE
+        #define HALT_SIZE 64
     #endif
 
     #ifndef DUMP
@@ -315,7 +335,7 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
         STORE_OP(sub);
         STORE_OP(jmp);
         STORE_OP(jnz);
-        STORE_OP_N(halt, halt, 64);     // Need more because of jump
+        STORE_OP_N(halt, halt, HALT_SIZE);     // Need more because of jump
 
         #undef STORE_OP_N
         #undef STORE_OP

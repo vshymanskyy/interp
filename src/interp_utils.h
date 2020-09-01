@@ -112,6 +112,7 @@ void mempatch(void* dest, size_t len, size_t dummy, size_t value) {
         return (void*)ALIGN_UP(gProg, 4);
     }
 #elif defined(USE_ALLOC_HEAP)
+    #include <stdlib.h>
     static
     void* malloc_exec()
     {
