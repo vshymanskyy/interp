@@ -151,8 +151,10 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
 
     #if UINTPTR_MAX == 0xFFFFFFFF
         #define PLACEHOLDER     0xdeadbeef
+        #define ASM_SIZE_T      ".long "
     #elif UINTPTR_MAX == 0xFFFFFFFFFFFFFFFFu
         #define PLACEHOLDER     0xdeadbeefdeadbeef
+        #define ASM_SIZE_T      ".quad "
     #else
         #error "Bogus pointer size"
     #endif
@@ -183,7 +185,7 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
                                              ".IMM_" ID ":"                                 EOL \
                                              ".quad (" STRINGIFY(PLACEHOLDER) " + " ID ")"  EOL \
                                              ".CONT_" ID ":"                                EOL \
-                                             : "=r"(imm) : /*inputs*/ : "x1");
+                                             : "=r"(imm) : /*no inputs*/ : "x1");
         #define JUMP(addr)      asm volatile("br %0" : : "r"(addr));
     #elif defined(__arm__)
         #define OP_ALIGN        4
@@ -205,7 +207,7 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
                                              "move $7, $ra"                                 EOL \
                                              "move $ra, $6"                                 EOL \
                                              "lw %0, 0($7)"                                 EOL \
-                                             : "=r"(imm) : /*inputs*/ : "$6", "$7");
+                                             : "=r"(imm) : /*no inputs*/ : "$6", "$7");
         #define ASM_ALIGN_ZERO() // always aligned on mips
         #define ASM_ALIGN_NOP()  // always aligned on mips
         #define JUMP(addr)      asm volatile("jr %0" : : "r"(addr));
@@ -215,9 +217,9 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
                                 asm volatile("auipc x10, 0"                                 EOL \
                                              "lw %0, 8(x10)"                                EOL \
                                              "j   .CONT_" ID                                EOL \
-                                             ".long (" STRINGIFY(PLACEHOLDER) " + " ID ")"  EOL \
+                                             ASM_SIZE_T " (" STRINGIFY(PLACEHOLDER) " + " ID ")"  EOL \
                                              ".CONT_" ID ":"                                EOL \
-                                             : "=r"(imm) : /*inputs*/ : "x10");
+                                             : "=r"(imm) : /*no inputs*/ : "x10");
         #define ASM_ALIGN_ZERO()        asm(".align " STRINGIFY(OP_ALIGN))
         #define ASM_ALIGN_NOP()         asm(".align " STRINGIFY(OP_ALIGN))
         #define JUMP(addr)      asm volatile("c.jr %0" : : "r"(addr));

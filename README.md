@@ -1,7 +1,7 @@
 # interp
 Testing interpreter dispatch methods: `Switching`, `Direct Threaded Code`, `Indirect Threaded Code`, `Tail-Calls` and `Inlining`.
 
-Supports `x86`, `x86-64`, `arm`, `aarch64`, `mips`, `rv32`, `xtensa` architectures.
+Supports `x86`, `x86-64`, `arm`, `aarch64`, `mips`, `mipsel`, `rv32`, `rv64`, `xtensa` architectures.
 
 ## Building on Linux
 
@@ -60,5 +60,10 @@ qemu-mipsel-static ./interp-mipsel
 sudo apt-get install gcc-mips-linux-gnu libc6-dev-mips-cross
 mips-linux-gnu-gcc -static main.c -I./src -Os -fPIC -o interp-mips
 qemu-mips-static ./interp-mips
+
+# RV64
+sudo apt install gcc-riscv64-linux-gnu libc6-dev-riscv64-cross
+riscv64-linux-gnu-gcc -static main.c -I./src -Os -fPIC -o interp-rv64
+qemu-riscv64-static ./interp-rv64
 ```
 
