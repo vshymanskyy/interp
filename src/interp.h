@@ -171,14 +171,22 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
     #endif
 
     #if defined(__x86_64__) || defined(__i386__)
-        #define ASM_GUARD(code) asm(""); code; asm("");
         #define ASM_GET_IMM(ID) register size_t imm;                                            \
                                 asm volatile("mov $(" STRINGIFY(PLACEHOLDER) " + " ID "), %0"   \
                                              : "=r"(imm));
         #define JUMP(addr)      asm volatile("jmp *%0" : : "r"(addr));
+    #elif defined(__aarch64__)
+        #define OP_ALIGN        4
+        #define ASM_GET_IMM(ID) register size_t imm;                                            \
+                                asm volatile("ldr %0, .IMM_" ID                             EOL \
+                                             "b   .CONT_" ID                                EOL \
+                                             ".IMM_" ID ":"                                 EOL \
+                                             ".quad (" STRINGIFY(PLACEHOLDER) " + " ID ")"  EOL \
+                                             ".CONT_" ID ":"                                EOL \
+                                             : "=r"(imm) : /*inputs*/ : "x1");
+        #define JUMP(addr)      asm volatile("br %0" : : "r"(addr));
     #elif defined(__arm__)
         #define OP_ALIGN        4
-        #define ASM_GUARD(code) while(dummy) { code; asm(""); }
         #define ASM_GET_IMM(ID) register size_t imm;                                            \
                                 asm volatile("ldr %0, [pc, #0]"                             EOL \
                                              "b   .CONT_" ID                                EOL \
@@ -189,7 +197,6 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
     #elif defined(__mips__)
         #define OP_ALIGN        4
         #define HALT_SIZE       128
-        #define ASM_GUARD(code) asm(""); code; asm("");
         #define ASM_GET_IMM(ID) register size_t imm;                                            \
                                 asm volatile("move $6, $ra"                                 EOL \
                                              "bal GetIP_" ID                                EOL \
@@ -204,7 +211,6 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
         #define JUMP(addr)      asm volatile("jr %0" : : "r"(addr));
     #elif defined(__riscv)
         #define OP_ALIGN        4
-        #define ASM_GUARD(code) asm(""); code; asm("");
         #define ASM_GET_IMM(ID) register size_t imm;                                            \
                                 asm volatile("auipc x10, 0"                                 EOL \
                                              "lw %0, 8(x10)"                                EOL \
@@ -235,6 +241,10 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
         #error "Platform not supported"
     #endif
         
+    #ifndef ASM_GUARD
+        #define ASM_GUARD(code)             asm(""); code; asm("");
+    #endif
+        
     #if OP_ALIGN <= 1
         #define IS_OP_ALIGNED(addr)         true
         #define ASM_ALIGN_ZERO()
@@ -258,7 +268,7 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
     #ifndef DUMP
         #define DUMP 0
     #endif
-    
+
     #if DUMP
         void dump(void* addr, size_t len) {
             uint8_t* p = (uint8_t*)addr;
