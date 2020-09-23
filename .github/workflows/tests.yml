@@ -129,9 +129,20 @@ jobs:
       run: |
         ${{ matrix.config.qemu }} ./interp
 
-  build-platformio:
+  build-pio:
     runs-on: ubuntu-latest
+    name: build-pio-${{ matrix.config.target }}
     timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+        - {target: ESP8266      }
+        - {target: ESP32        }
+        - {target: TinyBLE      }
+        - {target: BLENano2     }
+        - {target: SipeedMAIX   }
 
     steps:
     - uses: actions/checkout@v2
@@ -144,4 +155,4 @@ jobs:
         python -m pip install --upgrade pip
         pip install -U platformio
     - name: Build
-      run: pio run
+      run: pio run -e ${{ matrix.config.target }}
