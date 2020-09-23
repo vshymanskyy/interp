@@ -31,6 +31,12 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
 #define DIV(imm)                    EMIT_OP(div);               // Div 2 top stack values
 #define HALT()                      EMIT_OP(halt);              // Stop VM
 
+#if defined(USE_INLINE) && defined(__wasm__)
+    #warning "Cannot INLINE code on WASM target, using DTC"
+    #undef USE_INLINE
+    #define USE_DTC
+#endif
+
 #if !defined(USE_INLINE)
 
     #define EMIT_OP_IMM(op,imm)     { EMIT_OP(op); *vPC++ = (void*)(imm); }

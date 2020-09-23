@@ -3,6 +3,58 @@ name: tests
 on: [push, pull_request]
 
 jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    name: build-linux-${{ matrix.config.target }}
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+        - {target: clang,       cc: clang,      }
+        - {target: clang-x86,   cc: clang,      flags: "-m32",    install: "gcc-multilib"   }
+        - {target: gcc,         cc: gcc,        }
+        - {target: gcc-debug,   cc: gcc,        flags: "-O0 -g3"   }
+        - {target: gcc-x86,     cc: gcc,        flags: "-m32",    install: "gcc-multilib"   }
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install ${{ matrix.config.install }}
+      if: ${{ matrix.config.install }}
+      run: |
+        sudo apt update
+        sudo apt install ${{ matrix.config.install }}
+    - name: Build
+      run: |
+        ${{ matrix.config.cc }} main.c -I./src -Os -fPIC ${{ matrix.config.flags }} -o ./interp
+    - name: Test
+      run: |
+        ./interp
+
+  build-wasi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install Python dependencies
+      run: |
+        python3 -m pip install pip==20.1.1
+        python3 -m pip install --upgrade setuptools wheel
+        pip3 --version
+    - name: Install Wasienv
+      env:
+        WASMER_RELEASE_TAG: "0.17.1"
+      run: curl https://raw.githubusercontent.com/wasienv/wasienv/master/install.sh | sh
+    - name: Build
+      run: |
+        source $HOME/.wasienv/wasienv.sh
+        wasicc main.c -I./src -Os -o interp.wasm
+    - name: Test
+      run: |
+        source $HOME/.wasmer/wasmer.sh
+        wasmer interp.wasm
 
   build-cross-qemu:
     runs-on: ubuntu-latest
