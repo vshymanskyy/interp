@@ -2,7 +2,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
-#include <unistd.h>
 
 #include "interp_utils.h"
 #define OP_ENUM
@@ -33,6 +32,12 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
 
 #if defined(USE_INLINE) && defined(__wasm__)
     #warning "Cannot INLINE code on WASM target, using DTC"
+    #undef USE_INLINE
+    #define USE_DTC
+#endif
+
+#if defined(USE_INLINE) && defined(WIN32)
+    #warning "Cannot (yet) INLINE code on WIN32 target, using DTC"
     #undef USE_INLINE
     #define USE_DTC
 #endif

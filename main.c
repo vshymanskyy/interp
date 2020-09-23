@@ -2,7 +2,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
-#include <unistd.h>
 
 // Select interpreter mode:
 //#define USE_DTC             // Direct Threaded Code

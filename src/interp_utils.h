@@ -84,6 +84,7 @@ void mempatch(void* dest, size_t len, size_t dummy, size_t value) {
     #elif defined(__riscv)
         #define USE_ALLOC_STATIC
     #elif defined(__linux__) || defined(__APPLE__)
+        #include <unistd.h>
         #include <sys/mman.h>
 
         static
