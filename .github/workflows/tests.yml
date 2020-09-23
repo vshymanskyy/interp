@@ -36,7 +36,7 @@ jobs:
         sudo apt install ${{ matrix.config.toolchain }}
     - name: Build
       run: |
-        ${{ matrix.config.cc }} -I./src -Os -fPIC -lm -static -o ./interp
+        ${{ matrix.config.cc }} main.c -I./src -Os -fPIC -lm -static -o ./interp
     - name: Test
       run: |
         ${{ matrix.config.qemu }} ./interp
