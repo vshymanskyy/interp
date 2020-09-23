@@ -1,10 +1,10 @@
 // Select interpreter mode:
-#define USE_DTC             // Direct Threaded Code
+//#define USE_DTC           // Direct Threaded Code
 //#define USE_TTC           // Token (Indirect) Threaded Code
 //#define USE_SWITCH        // Switching
 //#define USE_TAIL_CALLS    // Tail Calls
 //#define USE_CALLS         // Calls Loop
-//#define USE_INLINE        // Machine Code Inlining
+#define USE_INLINE          // Machine Code Inlining
 
 #include <Arduino.h> 
 #include <stdarg.h>
@@ -74,7 +74,7 @@ void interp_task(void*) {
     
     void** prog_end = example_1(prog);
 
-    DBG_PRINTF("Code: %zd bytes\n", (char*)prog_end-(char*)prog);
+    DBG_PRINTF("Code: %d bytes\n", (char*)prog_end-(char*)prog);
 
     uint32_t t = micros();
     interp_run(prog);
@@ -88,7 +88,7 @@ void interp_task(void*) {
    
     Serial.print("Differs: ");  Serial.print(float(vm_time)/native_time); Serial.println("x");
 
-    DBG_PRINTF("Stack: %08zx %08zx %08zx\n", gStack[STACK_SIZE-1], gStack[STACK_SIZE-2], gStack[STACK_SIZE-3]);
+    DBG_PRINTF("Stack: %08x %08x %08x\n", gStack[STACK_SIZE-1], gStack[STACK_SIZE-2], gStack[STACK_SIZE-3]);
 
 #ifdef ESP32
     vTaskDelete(NULL);

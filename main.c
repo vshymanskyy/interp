@@ -5,14 +5,14 @@
 #include <unistd.h>
 
 // Select interpreter mode:
-#define USE_DTC             // Direct Threaded Code
+//#define USE_DTC             // Direct Threaded Code
 //#define USE_TTC           // Token (Indirect) Threaded Code
 //#define USE_SWITCH        // Switching
 //#define USE_TAIL_CALLS    // Tail Calls
 //#define USE_CALLS         // Calls Loop
-//#define USE_INLINE        // Machine Code Inlining
+#define USE_INLINE        // Machine Code Inlining
 
-#define DUMP 1
+//#define DUMP 1
 
 #define DBG_PRINTF printf
 
@@ -30,9 +30,11 @@ void** example_0(void** vPC)
     return vPC;
 }
 
+#define LOOP_COUNT 100000000
+
 void** example_1(void** vPC)
 {
-    PUSH(100000000);
+    PUSH(LOOP_COUNT);
     LABEL(loop);
         DEC();
         JNZ(loop);
@@ -41,9 +43,18 @@ void** example_1(void** vPC)
     return vPC;
 }
 
+void native_example_1()
+{
+    volatile size_t i = LOOP_COUNT;    
+    while (i--) { }
+}
+
 int main()
 {
     DBG_PRINTF("Initializing...\n");
+
+    //native_example_1();
+    //return 0;
 
     interp_init();
 
