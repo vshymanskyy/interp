@@ -31,6 +31,40 @@ jobs:
     - name: Test
       run: |
         ./interp
+        
+  build-mac:
+    runs-on: macos-latest
+    timeout-minutes: 10
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build
+      run: |
+        clang main.c -I./src -Os -fPIC -o ./interp
+    - name: Test
+      run: |
+        ./interp
+        
+  build-windows:
+    runs-on: windows-latest
+    name: build-windows-${{ matrix.config.target }}
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+        - {target: clang,       cc: clang,      }
+        - {target: clang-x86,   cc: clang,      flags: "-m32"  }
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build
+      run: |
+        clang-cl main.c /I./src/ /Os /Oy /Fe ./interp.exe
+    - name: Test
+      run: |
+        ./interp.exe
 
   build-wasi:
     runs-on: ubuntu-latest
