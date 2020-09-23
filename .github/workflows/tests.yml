@@ -60,6 +60,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Build
+      shell: cmd
       run: |
         call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
         clang-cl main.c /I./src/ /Os /Oy /Fe ./interp.exe
