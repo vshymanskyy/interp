@@ -3,6 +3,44 @@ name: tests
 on: [push, pull_request]
 
 jobs:
+
+  build-cross-qemu:
+    runs-on: ubuntu-latest
+    name: build-cross-qemu-${{ matrix.config.target }}
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+        - {target: arm,     toolchain: gcc-arm-linux-gnueabi,     cc: arm-linux-gnueabi-gcc,      qemu: qemu-arm-static     }
+        - {target: armhf,   toolchain: gcc-arm-linux-gnueabihf,   cc: arm-linux-gnueabihf-gcc,    qemu: qemu-arm-static     }
+        - {target: aarch64, toolchain: gcc-aarch64-linux-gnu,     cc: aarch64-linux-gnu-gcc,      qemu: qemu-aarch64-static }
+        - {target: riscv64, toolchain: gcc-riscv64-linux-gnu,     cc: riscv64-linux-gnu-gcc,      qemu: qemu-riscv64-static }
+        - {target: mips,    toolchain: gcc-mips-linux-gnu,        cc: mips-linux-gnu-gcc,         qemu: qemu-mips-static     }
+        - {target: mipsel,  toolchain: gcc-mipsel-linux-gnu,      cc: mipsel-linux-gnu-gcc,       qemu: qemu-mipsel-static   }
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install QEMU
+      env:
+        QEMU_SRC: "http://archive.ubuntu.com/ubuntu/pool/universe/q/qemu"
+        QEMU_VER: "qemu-user-static_4\\.2-.*_amd64.deb$"
+      run: |
+        DEB=`curl -s $QEMU_SRC/ | grep -o -E 'href="([^"#]+)"' | cut -d'"' -f2 | grep $QEMU_VER | tail -1`
+        wget $QEMU_SRC/$DEB
+        sudo dpkg -i $DEB
+    - name: Install ${{ matrix.config.toolchain }}
+      run: |
+        sudo apt update
+        sudo apt install ${{ matrix.config.toolchain }}
+    - name: Build
+      run: |
+        ${{ matrix.config.cc }} -I./src -Os -fPIC -lm -static -o ./interp
+    - name: Test
+      run: |
+        ${{ matrix.config.qemu }} ./interp
+
   build-platformio:
     runs-on: ubuntu-latest
     timeout-minutes: 10
