@@ -20,8 +20,7 @@ Stack: 00000000 00000000 00000000
 Use PlatformIO to build and upload, i.e.:
 ```bash
 pio run -e ESP32 -t upload && pio device monitor
-pio run -e ESP8266 -t upload && pio device monitor
-pio run -e TinyBLE -t upload && pio device monitor
+# Supported envs: ESP32, ESP8266, TinyBLE, BLENano2, SipeedMAIX
 ```
 
 ## Example VM code
