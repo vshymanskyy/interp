@@ -61,6 +61,7 @@ jobs:
     - uses: actions/checkout@v2
     - name: Build
       run: |
+        call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
         clang-cl main.c /I./src/ /Os /Oy /Fe ./interp.exe
     - name: Test
       run: |
