@@ -138,11 +138,11 @@ jobs:
       fail-fast: false
       matrix:
         config:
-        - {target: ESP8266      }
-        - {target: ESP32        }
-        - {target: TinyBLE      }
-        - {target: BLENano2     }
-        - {target: SipeedMAIX   }
+        - {target: esp8266,     env: ESP8266      }
+        - {target: esp32,       env: ESP32        }
+        - {target: nrf51,       env: TinyBLE      }
+        - {target: nrf52,       env: BLENano2     }
+        - {target: k210,        env: SipeedMAIX   }
 
     steps:
     - uses: actions/checkout@v2
@@ -155,4 +155,4 @@ jobs:
         python -m pip install --upgrade pip
         pip install -U platformio
     - name: Build
-      run: pio run -e ${{ matrix.config.target }}
+      run: pio run -e ${{ matrix.config.env }}
