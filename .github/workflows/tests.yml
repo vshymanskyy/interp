@@ -50,6 +50,7 @@ jobs:
     name: build-windows-${{ matrix.config.target }}
     timeout-minutes: 10
 
+    steps:
     - uses: actions/checkout@v2
     - name: Install LLVM
       shell: powershell
