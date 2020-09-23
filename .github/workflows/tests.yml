@@ -60,10 +60,12 @@ jobs:
         echo "::set-env name=PATH::$env:PATH"
     - name: Build
       run: |
-        clang-cl main.c /I./src/ /Os /Oy /Fe./interp.exe
+        clang -m64 main.c -I./src -Os -o ./interp-x64.exe
+        clang -m32 main.c -I./src -Os -o ./interp-x86.exe
     - name: Test
       run: |
-        ./interp.exe
+        ./interp-x64.exe
+        ./interp-x86.exe
 
   build-wasi:
     runs-on: ubuntu-latest

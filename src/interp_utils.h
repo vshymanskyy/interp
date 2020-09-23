@@ -95,8 +95,17 @@ void mempatch(void* dest, size_t len, size_t dummy, size_t value) {
                  MAP_ANONYMOUS | MAP_PRIVATE,
                  -1, 0);
         }
-    #elif defined(WIN32)
-        #error Win32 not implemented        // TODO
+    #elif defined(_WIN32)
+        #include <windows.h>
+        static
+        void* malloc_exec()
+        {
+            SYSTEM_INFO system_info;
+            GetSystemInfo(&system_info);
+
+            size_t page_size = system_info.dwPageSize;
+            return VirtualAlloc(NULL, page_size, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+        }
     #else
         #define USE_ALLOC_HEAP
     #endif
