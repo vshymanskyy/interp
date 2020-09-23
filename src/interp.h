@@ -5,21 +5,31 @@
 #include <unistd.h>
 
 #include "interp_utils.h"
-#include "opcodes_enum.h"
+#define OP_ENUM
+#include "opcodes.h"
+#undef OP_ENUM
 
 #define STACK_SIZE 256
 static size_t gStack[STACK_SIZE] = { (size_t)-1, };
 
 // Syntactic Helpers
 
-#define LABEL(lbl)                  void** lbl = vPC;
-#define PUSH(value)                 EMIT_OP_IMM(push,value);
-#define JNZ(value)                  EMIT_OP_IMM(jnz,value);
-#define DUP()                       EMIT_OP(dup);
-#define INC(value)                  EMIT_OP_IMM(inc,value);
-#define DEC(value)                  EMIT_OP_IMM(dec,value);
-#define HALT()                      EMIT_OP(halt);
-
+#define LABEL(lbl)                  void** lbl = vPC;           // Store code position to a label
+#define PUSH(imm)                   EMIT_OP_IMM(push,imm);      // Push constant to stack
+#define DUP()                       EMIT_OP(dup);               // Duplicate stack top
+#define DROP()                      EMIT_OP(drop);              // Drop top value from stack
+#define JMP(imm)                    EMIT_OP_IMM(jmp,imm);       // Jump
+#define JNZ(imm)                    EMIT_OP_IMM(jnz,imm);       // Jump if Not Zero
+#define JNZP(imm)                   EMIT_OP_IMM(jnzp,imm);      // Jump if Not Zero + Pop
+#define INCN(imm)                   EMIT_OP_IMM(incN,imm);      // Increase by a constant
+#define DECN(imm)                   EMIT_OP_IMM(decN,imm);      // Decrease by a constant
+#define INC()                       EMIT_OP(inc);               // Increase by 1
+#define DEC()                       EMIT_OP(dec);               // Decrease by 1
+#define ADD(imm)                    EMIT_OP(add);               // Add 2 top stack values
+#define SUB(imm)                    EMIT_OP(sub);               // Sub 2 top stack values
+#define MUL(imm)                    EMIT_OP(mul);               // Mul 2 top stack values
+#define DIV(imm)                    EMIT_OP(div);               // Div 2 top stack values
+#define HALT()                      EMIT_OP(halt);              // Stop VM
 
 #if !defined(USE_INLINE)
 
@@ -35,12 +45,12 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
 
     #if defined(USE_DTC)            // Direct Threaded Code
         #define OP(op, code)        label_##op: { code; } NEXT();
-        #define EMIT_OP(op)         *vPC++ = gLabelTable[op_##op]
+        #define EMIT_OP(op)         ASSERT(gLabelTable[op_##op]); *vPC++ = gLabelTable[op_##op]
         #define NEXT()              goto **(vPC++)
     #elif defined(USE_TTC)          // Indirect (Token) Threaded Code
         #define OP(op, code)        label_##op: { code; } NEXT();
-        #define EMIT_OP(op)         *(uint8_t*)vPC++ = (uint8_t)op_##op
-        #define NEXT()              goto *gLabelTable[*(uint8_t*)vPC++]
+        #define EMIT_OP(op)         ASSERT(gLabelTable[op_##op]); *vPC++ = (void*)op_##op
+        #define NEXT()              goto *gLabelTable[(size_t)*vPC++]
     #endif
 
     static void* gLabelTable[Opcode_qty];
@@ -54,22 +64,12 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
             NEXT();
         }
 
-        #define STORE_OP(label) gLabelTable[op_##label] = &&label_##label
-        STORE_OP(push);
-        STORE_OP(drop);
-        STORE_OP(dup);
-        STORE_OP(inc);
-        STORE_OP(dec);
-        STORE_OP(add);
-        STORE_OP(sub);
-        STORE_OP(print);
-        STORE_OP(jmp);
-        STORE_OP(jnz);
-        STORE_OP(halt);
-        #undef STORE_OP
+        #define OP_STORE(label) gLabelTable[op_##label] = &&label_##label
+        #include "opcodes.h"
+        #undef OP_STORE
         return 0;
 
-        #include "opcodes_impl.h"
+        #include "opcodes.h"
     }
 
 #elif defined(USE_SWITCH)
@@ -88,7 +88,7 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
 
         while (true) {
             switch ((Opcode)(size_t)*vPC++) {
-                #include "opcodes_impl.h"
+                #include "opcodes.h"
                 default: return 1;
             }
         }
@@ -104,7 +104,7 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
 
     typedef int (*OpFunc)(OpSig);
 
-    #include "opcodes_impl.h"
+    #include "opcodes.h"
 
     static inline
     int interp_run(void** prog)
@@ -130,7 +130,7 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
     void** vPC;
     size_t* vSP = &gStack[STACK_SIZE-1];
 
-    #include "opcodes_impl.h"
+    #include "opcodes.h"
 
     static inline
     int interp_run(void** prog)
@@ -146,8 +146,6 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
     }
 
 #elif defined(USE_INLINE)
-
-    #define GET_IMM(op)         ASM_GET_IMM(STRINGIFY(op))
 
     #if UINTPTR_MAX == 0xFFFFFFFF
         #define PLACEHOLDER     0xdeadbeef
@@ -173,67 +171,69 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
     #endif
 
     #if defined(__x86_64__) || defined(__i386__)
-        #define ASM_GET_IMM(ID) register size_t imm;                                            \
-                                asm volatile("mov $(" STRINGIFY(PLACEHOLDER) " + " ID "), %0"   \
-                                             : "=r"(imm));
+        #define GET_IMM(ID)     register size_t imm;                                            \
+                                asm volatile("mov $(" STRINGIFY(PLACEHOLDER) " + %c[id]), %0"   \
+                                             : "=r"(imm) : [id]"i"(ID));
         #define JUMP(addr)      asm volatile("jmp *%0" : : "r"(addr));
     #elif defined(__aarch64__)
         #define OP_ALIGN        4
-        #define ASM_GET_IMM(ID) register size_t imm;                                            \
-                                asm volatile("ldr %0, .IMM_" ID                             EOL \
-                                             "b   .CONT_" ID                                EOL \
-                                             ".IMM_" ID ":"                                 EOL \
-                                             ".quad (" STRINGIFY(PLACEHOLDER) " + " ID ")"  EOL \
-                                             ".CONT_" ID ":"                                EOL \
-                                             : "=r"(imm) : /*no inputs*/ : "x1");
+        #define HALT_SIZE       32
+        #define GET_IMM(ID)     register size_t imm;                                            \
+                                asm volatile("ldr %0, .IMM_" STRINGIFY(ID)                  EOL \
+                                             "b   .CONT_" STRINGIFY(ID)                     EOL \
+                                             ".IMM_" STRINGIFY(ID) ":"                      EOL \
+                                             ".quad (" STRINGIFY(PLACEHOLDER) " + %c[id])"  EOL \
+                                             ".CONT_" STRINGIFY(ID) ":"                     EOL \
+                                             : "=r"(imm) : [id]"i"(ID) : "x1");
         #define JUMP(addr)      asm volatile("br %0" : : "r"(addr));
     #elif defined(__arm__)
         #define OP_ALIGN        4
-        #define ASM_GET_IMM(ID) register size_t imm;                                            \
+        #define HALT_SIZE       32
+        #define GET_IMM(ID)     register size_t imm;                                            \
                                 asm volatile("ldr %0, [pc, #0]"                             EOL \
-                                             "b   .CONT_" ID                                EOL \
-                                             ".long (" STRINGIFY(PLACEHOLDER) " + " ID ")"  EOL \
-                                             ".CONT_" ID ":"                                EOL \
-                                             : "=r"(imm));
+                                             "b   .CONT_" STRINGIFY(ID)                     EOL \
+                                             ".long (" STRINGIFY(PLACEHOLDER) " + %c[id])"  EOL \
+                                             ".CONT_" STRINGIFY(ID) ":"                     EOL \
+                                             : "=r"(imm) : [id]"i"(ID));
         #define JUMP(addr)      asm volatile("mov pc,%0" : : "r"(addr));
     #elif defined(__mips__)
         #define OP_ALIGN        4
         #define HALT_SIZE       128
-        #define ASM_GET_IMM(ID) register size_t imm;                                            \
+        #define GET_IMM(ID)     register size_t imm;                                            \
                                 asm volatile("move $6, $ra"                                 EOL \
-                                             "bal GetIP_" ID                                EOL \
-                                             ".long (" STRINGIFY(PLACEHOLDER) " + " ID ")"  EOL \
-                                             "GetIP_" ID ":"                                EOL \
+                                             "bal GetIP_" STRINGIFY(ID)                     EOL \
+                                             ".long (" STRINGIFY(PLACEHOLDER) " + %c[id])"  EOL \
+                                             "GetIP_" STRINGIFY(ID) ":"                     EOL \
                                              "move $7, $ra"                                 EOL \
                                              "move $ra, $6"                                 EOL \
                                              "lw %0, 0($7)"                                 EOL \
-                                             : "=r"(imm) : /*no inputs*/ : "$6", "$7");
+                                             : "=r"(imm) : [id]"i"(ID) : "$6", "$7");
         #define ASM_ALIGN_ZERO() // always aligned on mips
         #define ASM_ALIGN_NOP()  // always aligned on mips
         #define JUMP(addr)      asm volatile("jr %0" : : "r"(addr));
     #elif defined(__riscv)
         #define OP_ALIGN        4
-        #define ASM_GET_IMM(ID) register size_t imm;                                            \
+        #define GET_IMM(ID)     register size_t imm;                                            \
                                 asm volatile("auipc x10, 0"                                 EOL \
                                              "lw %0, 8(x10)"                                EOL \
-                                             "j   .CONT_" ID                                EOL \
-                                             ASM_SIZE_T " (" STRINGIFY(PLACEHOLDER) " + " ID ")"  EOL \
-                                             ".CONT_" ID ":"                                EOL \
-                                             : "=r"(imm) : /*no inputs*/ : "x10");
+                                             "j   .CONT_" STRINGIFY(ID)                     EOL \
+                                             ASM_SIZE_T " (" STRINGIFY(PLACEHOLDER) " + %c[id])" EOL \
+                                             ".CONT_" STRINGIFY(ID) ":"                     EOL \
+                                             : "=r"(imm) : [id]"i"(ID) : "x10");
         #define ASM_ALIGN_ZERO()        asm(".align " STRINGIFY(OP_ALIGN))
         #define ASM_ALIGN_NOP()         asm(".align " STRINGIFY(OP_ALIGN))
         #define JUMP(addr)      asm volatile("c.jr %0" : : "r"(addr));
     #elif defined(__xtensa__)
         #define OP_ALIGN        4
         #define ASM_GUARD(code) while(dummy) { code; asm(""); }
-        #define ASM_GET_IMM(ID) register size_t imm;                                            \
-                                asm volatile("memw; j .LOAD_" ID                            EOL \
+        #define GET_IMM(ID)     register size_t imm;                                            \
+                                asm volatile("memw; j .LOAD_" STRINGIFY(ID)                 EOL \
                                              ".align 4"                                     EOL \
-                                             ".IMM_" ID ":"                                 EOL \
-                                             ".long (" STRINGIFY(PLACEHOLDER) " + " ID ")"  EOL \
-                                             ".LOAD_" ID ":"                                EOL \
-                                             "l32r %0, .IMM_" ID                            EOL \
-                                             : "=r"(imm));
+                                             ".IMM_" STRINGIFY(ID) ":"                      EOL \
+                                             ".long (" STRINGIFY(PLACEHOLDER) " + %c[id])"  EOL \
+                                             ".LOAD_" STRINGIFY(ID) ":"                     EOL \
+                                             "l32r %0, .IMM_" STRINGIFY(ID)                 EOL \
+                                             : "=r"(imm) : [id]"i"(ID));
         // TODO/OPTZ: achieve alignment without jump?
         #define ASM_ALIGN_NOP() asm volatile("j .eop_" STRINGIFY(__LINE__)                  EOL \
                                              ".balign " STRINGIFY(OP_ALIGN) ",0x00,16"      EOL \
@@ -327,7 +327,10 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
             goto *prog;
         }
 
-        #define STORE_OP_N(tgt,op,n)    { OpChunk* c = &gLabelTable[op_##tgt]; c->addr = &&label_##op; c->len = n;      \
+        #define OP_ADDR(op)             (&&label_##op)
+        #define OP_SIZE(op)             ((char*)&&label_##op##_end - (char*)&&label_##op)
+
+        #define OP_STORE_N(tgt,op,n)    { OpChunk* c = &gLabelTable[op_##tgt]; c->addr = OP_ADDR(op); c->len = (n);     \
                                           ASSERT(c->addr); ASSERT(c->len > 0);                                          \
                                           if (DUMP) {                                                                   \
                                             char buff[c->len+8]; TEXT_READ(buff, c->addr, c->len);                      \
@@ -336,28 +339,26 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
                                           ASSERT(IS_OP_ALIGNED(c->addr)); ASSERT(IS_OP_ALIGNED(c->len));                \
                                         }
 
-        #define STORE_OP(op)            STORE_OP_N(op, op, (char*)&&label_##op##_end - (char*)&&label_##op)
+        #define OP_STORE(op)            if (op_##op == op_halt) {                                                       \
+                                          OP_STORE_N(op, op, HALT_SIZE);     /* Need more because of jump */            \
+                                        } else {                                                                        \
+                                          OP_STORE_N(op, op, OP_SIZE(op));                                              \
+                                        }
 
-        STORE_OP(push);
-        STORE_OP(drop);
-        STORE_OP(dup);
-        STORE_OP(inc);
-        STORE_OP(dec);
-        STORE_OP(add);
-        STORE_OP(sub);
-        STORE_OP(jmp);
-        STORE_OP(jnz);
-        STORE_OP_N(halt, halt, HALT_SIZE);     // Need more because of jump
+        #include "opcodes.h"
 
-        #undef STORE_OP_N
-        #undef STORE_OP
+        #undef OP_STORE_N
+        #undef OP_STORE
+
+        #undef OP_ADDR
+        #undef OP_SIZE
 
         volatile bool dummy = true;
         if (dummy) {
             return 1;
         }
 
-        #include "opcodes_impl.h"
+        #include "opcodes.h"
 
         for(;;) { dummy = true; }       // Should not reach here
     }

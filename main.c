@@ -5,12 +5,14 @@
 #include <unistd.h>
 
 // Select interpreter mode:
-//#define USE_DTC           // Direct Threaded Code
+#define USE_DTC             // Direct Threaded Code
 //#define USE_TTC           // Token (Indirect) Threaded Code
 //#define USE_SWITCH        // Switching
 //#define USE_TAIL_CALLS    // Tail Calls
 //#define USE_CALLS         // Calls Loop
-#define USE_INLINE          // Machine Code Inlining
+//#define USE_INLINE        // Machine Code Inlining
+
+#define DUMP 1
 
 #define DBG_PRINTF printf
 
@@ -20,9 +22,9 @@ void** example_0(void** vPC)
 {
     PUSH(0x10002000);
     DUP();
-    DEC(0x100);
+    DECN(0x100);
     DUP();
-    DEC(0x100);
+    DECN(0x100);
     HALT();
 
     return vPC;
@@ -30,10 +32,9 @@ void** example_0(void** vPC)
 
 void** example_1(void** vPC)
 {
-    PUSH(1000000000);
+    PUSH(100000000);
     LABEL(loop);
-        DEC(1);
-        DUP();
+        DEC();
         JNZ(loop);
     HALT();
 
@@ -45,7 +46,7 @@ int main()
     DBG_PRINTF("Initializing...\n");
 
     interp_init();
-    
+
     void** prog = (void**)malloc_exec();
     ASSERT(prog);
 
