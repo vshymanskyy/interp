@@ -58,14 +58,14 @@ jobs:
         scoop install llvm --global
         # Scoop modifies the PATH so we make the modified PATH global
         echo "::set-env name=PATH::$env:PATH"
-    - name: Build
-      run: |
-        clang -m64 main.c -I./src -Os -o ./interp-x64.exe
-        clang -m32 main.c -I./src -Os -o ./interp-x86.exe
-    - name: Test
-      run: |
-        ./interp-x64.exe
-        ./interp-x86.exe
+    - name: Build x64
+      run: clang -m64 main.c -I./src -Os -o ./interp-x64.exe
+    - name: Build x86
+      run: clang -m32 main.c -I./src -Os -o ./interp-x86.exe
+    - name: Test x64
+      run: ./interp-x64.exe
+    - name: Test x86
+      run: ./interp-x86.exe
 
   build-wasi:
     runs-on: ubuntu-latest
