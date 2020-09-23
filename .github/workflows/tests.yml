@@ -50,19 +50,16 @@ jobs:
     name: build-windows-${{ matrix.config.target }}
     timeout-minutes: 10
 
-    strategy:
-      fail-fast: false
-      matrix:
-        config:
-        - {target: clang,       cc: clang,      }
-        - {target: clang-x86,   cc: clang,      flags: "-m32"  }
-
-    steps:
     - uses: actions/checkout@v2
-    - name: Build
-      shell: cmd
+    - name: Install LLVM
+      shell: powershell
       run: |
-        call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+        Invoke-Expression (New-Object System.Net.WebClient).DownloadString('https://get.scoop.sh')
+        scoop install llvm --global
+        # Scoop modifies the PATH so we make the modified PATH global
+        echo "::set-env name=PATH::$env:PATH"
+    - name: Build
+      run: |
         clang-cl main.c /I./src/ /Os /Oy /Fe ./interp.exe
     - name: Test
       run: |
