@@ -47,9 +47,9 @@ jobs:
         
   build-windows:
     runs-on: windows-latest
-    name: build-windows-${{ matrix.config.target }}
     timeout-minutes: 10
 
+    steps:
     - uses: actions/checkout@v2
     - name: Install LLVM
       shell: powershell
@@ -60,7 +60,7 @@ jobs:
         echo "::set-env name=PATH::$env:PATH"
     - name: Build
       run: |
-        clang-cl main.c /I./src/ /Os /Oy /Fe ./interp.exe
+        clang-cl main.c /I./src/ /Os /Oy /Fe./interp.exe
     - name: Test
       run: |
         ./interp.exe
