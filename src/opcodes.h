@@ -14,6 +14,12 @@
     #define OP_IMPL_IMM             OP_IMPL
 #endif
 
+OP_IMPL(dummy1, { asm("nop; #1"); })
+OP_IMPL(dummy2, { asm("nop; #2"); })
+OP_IMPL(dummy3, { asm("nop; #3"); })
+OP_IMPL(dummy4, { asm("nop; #4"); })
+OP_IMPL(dummy5, { asm("nop; #5"); })
+
 OP_IMPL(drop, {
     vSP++;
 })
@@ -87,7 +93,7 @@ OP_IMPL_IMM(jnz, {
 
 // Should be always the last one
 OP_IMPL(halt, {
-    return 0;
+    FINISH();
 })
 
 #if defined(OP_ENUM)

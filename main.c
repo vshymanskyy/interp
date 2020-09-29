@@ -29,15 +29,25 @@ void** example_0(void** vPC)
     return vPC;
 }
 
-#define LOOP_COUNT 100000000
+#define LOOP_COUNT 100*1000000
 
 void** example_1(void** vPC)
 {
     PUSH(LOOP_COUNT);
     LABEL(loop);
+        EMIT_OP(dummy1);
+        EMIT_OP(dummy2);
+        EMIT_OP(dummy1);
+        EMIT_OP(dummy3);
+        EMIT_OP(dummy1);
+        EMIT_OP(dummy4);
+        EMIT_OP(dummy1);
+        EMIT_OP(dummy5);
         DEC();
         JNZ(loop);
     HALT();
+
+    DBG_PRINTF("Instructions: %d\n", LOOP_COUNT*10);
 
     return vPC;
 }

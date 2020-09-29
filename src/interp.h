@@ -68,6 +68,7 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
         #define EMIT_OP(op)         ASSERT(gLabelTable[op_##op]); *vPC++ = (void*)op_##op
         #define NEXT()              goto *gLabelTable[(size_t)*vPC++]
     #endif
+    #define FINISH()                return 0;
 
     static void* gLabelTable[Opcode_qty];
 
@@ -93,6 +94,7 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
     #define OP(op, code)        case op_##op: { code; } NEXT();
     #define EMIT_OP(op)         *vPC++ = (void*)op_##op
     #define NEXT()              continue;
+    #define FINISH()            return 0;
 
     static inline
     int interp_run(void** prog)
@@ -117,6 +119,7 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
     #define OP(op, code)        int opf_##op(OpSig) { { code; } NEXT(); }
     #define EMIT_OP(op)         *vPC++ = (void*)opf_##op
     #define NEXT()              return ((OpFunc)(* vPC))(vPC + 1, vSP);
+    #define FINISH()            return 0;
 
     typedef int (*OpFunc)(OpSig);
 
@@ -135,13 +138,16 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
 
 #elif defined(USE_CALLS)
 
-    #define OP(op, code)        int opf_##op() { { code; } NEXT(); }
+    #define OP(op, code)        void* opf_##op() { { code; } NEXT(); }
     #define EMIT_OP(op)         *vPC++ = (void*)opf_##op
-    #define NEXT()              return CONTINUE;
+    #define NEXT()              return *vPC++;
+    #define FINISH()            return fireEscape;
 
-    #define CONTINUE            0xdeadbeef
+    void* fireEscape() {
+        return fireEscape;
+    }
 
-    typedef int (* OpFunc)();
+    typedef void* (* OpFunc)();
     
     void** vPC;
     size_t* vSP = &gStack[STACK_SIZE-1];
@@ -155,10 +161,22 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
 
         vPC = prog;
 
-        for(;;) {
-            int res = ((OpFunc)(* vPC++))();
-            if (res != CONTINUE) return res;
+        OpFunc pfn = (OpFunc)*vPC++;
+
+        #define DISPATCH1       pfn = (OpFunc)(pfn());
+        #define DISPATCH2       DISPATCH1;  DISPATCH1;
+        #define DISPATCH4       DISPATCH2;  DISPATCH2;
+        #define DISPATCH8       DISPATCH4;  DISPATCH4;
+        #define DISPATCH16      DISPATCH8;  DISPATCH8;
+
+        while (pfn != fireEscape) {
+            DISPATCH8;
         }
+        // Determine exit cause
+        if (pfn == fireEscape) {
+            return 0;
+        }
+        return 1;
     }
 
 #elif defined(USE_INLINE)
@@ -325,6 +343,7 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
                                     vPC = (void**)((char*)vPC + c->len); }
 
     #define NEXT()                  not_implemented(); // Not implemented
+    #define FINISH()                return 0;
 
     typedef struct OpChunk {
         void*   addr;
