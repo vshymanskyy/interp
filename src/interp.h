@@ -211,7 +211,6 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
         #define JUMP(addr)      asm volatile("jmp *%0" : : "r"(addr));
     #elif defined(__aarch64__)
         #define OP_ALIGN        4
-        #define HALT_SIZE       32
         // Use numeric local labels: named labels become real symbols on Mach-O (Apple),
         // which breaks the ldr literal fixup and CFI generation
         #define GET_IMM(ID)     register size_t imm;                                            \
@@ -223,7 +222,6 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
         #define JUMP(addr)      asm volatile("br %0" : : "r"(addr));
     #elif defined(__arm__)
         #define OP_ALIGN        4
-        #define HALT_SIZE       32
         #define GET_IMM(ID)     register size_t imm;                                            \
                                 asm volatile("ldr %0, [pc, #0]"                             EOL \
                                              "b   .CONT_" STRINGIFY(ID)                     EOL \
@@ -233,7 +231,6 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
         #define JUMP(addr)      asm volatile("mov pc,%0" : : "r"(addr));
     #elif defined(__mips__)
         #define OP_ALIGN        4
-        #define HALT_SIZE       128
         #define GET_IMM(ID)     register size_t imm;                                            \
                                 asm volatile("move $6, $ra"                                 EOL \
                                              "bal GetIP_" STRINGIFY(ID)                     EOL \
@@ -308,10 +305,6 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
         #endif
     #endif
         
-    #ifndef HALT_SIZE
-        #define HALT_SIZE 64
-    #endif
-
     #ifndef DUMP
         #define DUMP 0
     #endif
@@ -354,7 +347,12 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
                                     vPC = (void**)((char*)vPC + c->len); }
 
     #define NEXT()                  not_implemented(); // Not implemented
-    #define FINISH()                return 0;
+
+    // A plain return may compile to a (relative) jump to the shared function epilogue,
+    // which breaks once the code is copied. Instead, jump back to interp_run by absolute address
+    #define FINISH()                { GET_IMM(op_halt); JUMP(imm); }
+    #undef  HALT
+    #define HALT()                  EMIT_OP_IMM(halt, gExitAddr);
 
     typedef struct OpChunk {
         void*   addr;
@@ -362,6 +360,7 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
     } OpChunk;
 
     static OpChunk gLabelTable[Opcode_qty];
+    static void* gExitAddr;
 
     static inline
     int TEXT_SECTION interp_run(void** prog)
@@ -385,11 +384,7 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
                                           ASSERT(IS_OP_ALIGNED(c->addr)); ASSERT(IS_OP_ALIGNED(c->len));                \
                                         }
 
-        #define OP_STORE(op)            if (op_##op == op_halt) {                                                       \
-                                          OP_STORE_N(op, op, HALT_SIZE);     /* Need more because of jump */            \
-                                        } else {                                                                        \
-                                          OP_STORE_N(op, op, OP_SIZE(op));                                              \
-                                        }
+        #define OP_STORE(op)            OP_STORE_N(op, op, OP_SIZE(op))
 
         #include "opcodes.h"
 
@@ -399,6 +394,8 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
         #undef OP_ADDR
         #undef OP_SIZE
 
+        gExitAddr = &&label_exit;
+
         volatile bool dummy = true;
         if (dummy) {
             return 1;
@@ -406,7 +403,8 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
 
         #include "opcodes.h"
 
-        for(;;) { dummy = true; }       // Should not reach here
+    label_exit:                         // halt jumps here
+        return 0;
     }
 
 #else
