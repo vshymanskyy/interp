@@ -73,6 +73,7 @@ int main()
     DBG_PRINTF("Generating Code @ %p\n", prog);
     
     void** prog_end = example_1(prog);
+    finalize_exec(prog, prog_end);
 
     DBG_PRINTF("Code: %zd bytes\n", (char*)prog_end-(char*)prog);
 

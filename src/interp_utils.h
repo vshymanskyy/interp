@@ -86,14 +86,41 @@ void mempatch(void* dest, size_t len, size_t dummy, size_t value) {
     #elif defined(__linux__) || defined(__APPLE__)
         #include <unistd.h>
         #include <sys/mman.h>
+        #if defined(__APPLE__) && defined(__aarch64__)
+            #include <pthread.h>
+            #include <libkern/OSCacheControl.h>
+        #endif
 
         static
         void* malloc_exec()
         {
-            return mmap(0,  getpagesize(),
-                 PROT_WRITE | PROT_EXEC,
-                 MAP_ANONYMOUS | MAP_PRIVATE,
-                 -1, 0);
+            int flags = MAP_ANONYMOUS | MAP_PRIVATE;
+        #if defined(__APPLE__)
+            flags |= MAP_JIT;       // Required for RWX memory on Apple Silicon
+        #endif
+            void* mem = mmap(0,  getpagesize(),
+                 PROT_READ | PROT_WRITE | PROT_EXEC,
+                 flags, -1, 0);
+            if (mem == MAP_FAILED) {
+                return NULL;
+            }
+        #if defined(__APPLE__) && defined(__aarch64__)
+            pthread_jit_write_protect_np(0);    // Make MAP_JIT memory writable for this thread
+        #endif
+            return mem;
+        }
+
+        // Make generated code visible to instruction fetch
+        #define HAVE_FINALIZE_EXEC
+        static
+        void finalize_exec(void* start, void* end)
+        {
+        #if defined(__APPLE__) && defined(__aarch64__)
+            pthread_jit_write_protect_np(1);    // Make MAP_JIT memory executable for this thread
+            sys_icache_invalidate(start, (char*)end - (char*)start);
+        #else
+            __builtin___clear_cache((char*)start, (char*)end);
+        #endif
         }
     #elif defined(_WIN32)
         #include <windows.h>
@@ -128,4 +155,9 @@ void mempatch(void* dest, size_t len, size_t dummy, size_t value) {
     {
         return (void*)ALIGN_UP(malloc(ALLOC_EXEC_PAGE_SIZE), 4);
     }
+#endif
+
+#if !defined(HAVE_FINALIZE_EXEC)
+    static inline
+    void finalize_exec(void* start, void* end) { (void)start; (void)end; }
 #endif

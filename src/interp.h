@@ -212,13 +212,14 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
     #elif defined(__aarch64__)
         #define OP_ALIGN        4
         #define HALT_SIZE       32
+        // Use numeric local labels: named labels become real symbols on Mach-O (Apple),
+        // which breaks the ldr literal fixup and CFI generation
         #define GET_IMM(ID)     register size_t imm;                                            \
-                                asm volatile("ldr %0, .IMM_" STRINGIFY(ID)                  EOL \
-                                             "b   .CONT_" STRINGIFY(ID)                     EOL \
-                                             ".IMM_" STRINGIFY(ID) ":"                      EOL \
-                                             ".quad (" STRINGIFY(PLACEHOLDER) " + %c[id])"  EOL \
-                                             ".CONT_" STRINGIFY(ID) ":"                     EOL \
-                                             : "=r"(imm) : [id]"i"(ID) : "x1");
+                                asm volatile("ldr %0, 1f"                                   EOL \
+                                             "b   2f"                                       EOL \
+                                             "1: .quad (" STRINGIFY(PLACEHOLDER) " + %c[id])" EOL \
+                                             "2:"                                           EOL \
+                                             : "=r"(imm) : [id]"i"(ID));
         #define JUMP(addr)      asm volatile("br %0" : : "r"(addr));
     #elif defined(__arm__)
         #define OP_ALIGN        4
@@ -290,10 +291,10 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
             #define IS_OP_ALIGNED(addr)     IS_ALIGNED(addr,OP_ALIGN)
         #endif
         #ifndef ASM_ALIGN_ZERO
-            #define ASM_ALIGN_ZERO()        asm(".balign " STRINGIFY(OP_ALIGN) ",0x00,16")
+            #define ASM_ALIGN_ZERO()        asm(".balign " STRINGIFY(OP_ALIGN) ",0x00")
         #endif
         #ifndef ASM_ALIGN_NOP
-            #define ASM_ALIGN_NOP()         asm(".align " STRINGIFY(OP_ALIGN) ",,16")
+            #define ASM_ALIGN_NOP()         asm(".balign " STRINGIFY(OP_ALIGN))
         #endif
     #endif
         
