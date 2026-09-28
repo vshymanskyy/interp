@@ -248,13 +248,23 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
         #define JUMP(addr)      asm volatile("jr %0" : : "r"(addr));
     #elif defined(__riscv)
         #define OP_ALIGN        4
+        #if __riscv_xlen == 64
+            #define ASM_LOAD_SIZE_T     "ld "
+        #else
+            #define ASM_LOAD_SIZE_T     "lw "
+        #endif
+        // Load the literal by label, so the offset holds with compressed instructions.
+        // norelax keeps the linker from turning it into a (non-relocatable) gp-relative load
         #define GET_IMM(ID)     register size_t imm;                                            \
-                                asm volatile("auipc x10, 0"                                 EOL \
-                                             "lw %0, 8(x10)"                                EOL \
-                                             "j   .CONT_" STRINGIFY(ID)                     EOL \
-                                             ASM_SIZE_T " (" STRINGIFY(PLACEHOLDER) " + %c[id])" EOL \
-                                             ".CONT_" STRINGIFY(ID) ":"                     EOL \
-                                             : "=r"(imm) : [id]"i"(ID) : "x10");
+                                asm volatile(".option push"                                 EOL \
+                                             ".option norelax"                              EOL \
+                                             ASM_LOAD_SIZE_T "%0, 1f"                       EOL \
+                                             "j   2f"                                       EOL \
+                                             ".balign 8"                                    EOL \
+                                             "1: " ASM_SIZE_T " (" STRINGIFY(PLACEHOLDER) " + %c[id])" EOL \
+                                             "2:"                                           EOL \
+                                             ".option pop"                                  EOL \
+                                             : "=r"(imm) : [id]"i"(ID));
         #define ASM_ALIGN_ZERO()        asm(".align " STRINGIFY(OP_ALIGN))
         #define ASM_ALIGN_NOP()         asm(".align " STRINGIFY(OP_ALIGN))
         #define JUMP(addr)      asm volatile("c.jr %0" : : "r"(addr));

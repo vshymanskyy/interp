@@ -16,6 +16,8 @@ Code: 166 bytes
 Stack: 00000000 00000000 00000000
 ```
 
+The default dispatch method is machine code `Inlining`. Select another one with `-DUSE_DTC`, `-DUSE_TTC`, `-DUSE_SWITCH`, `-DUSE_TAIL_CALLS` or `-DUSE_CALLS`.
+
 ## Building for ESP8266/ESP32/ARM devices
 Use PlatformIO to build and upload, i.e.:
 ```bash

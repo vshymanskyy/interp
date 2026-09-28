@@ -3,13 +3,16 @@
 #include <stdbool.h>
 #include <string.h>
 
-// Select interpreter mode:
-//#define USE_DTC             // Direct Threaded Code
+// Select interpreter mode (or pass i.e. -DUSE_SWITCH):
+//#define USE_DTC           // Direct Threaded Code
 //#define USE_TTC           // Token (Indirect) Threaded Code
 //#define USE_SWITCH        // Switching
 //#define USE_TAIL_CALLS    // Tail Calls
 //#define USE_CALLS         // Calls Loop
-#define USE_INLINE        // Machine Code Inlining
+#if !defined(USE_DTC) && !defined(USE_TTC) && !defined(USE_SWITCH) && \
+    !defined(USE_TAIL_CALLS) && !defined(USE_CALLS) && !defined(USE_INLINE)
+#define USE_INLINE          // Machine Code Inlining
+#endif
 
 //#define DUMP 1
 

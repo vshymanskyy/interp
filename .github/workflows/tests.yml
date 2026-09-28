@@ -1,136 +1,178 @@
 name: tests
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+    - "**"
+    paths-ignore: ['**.md']
+  pull_request:
+    paths-ignore: ['**.md']
+  workflow_dispatch:
+
+defaults:
+  run:
+    # bash everywhere (incl. Windows), with pipefail so `./interp | tee` fails on crash
+    shell: bash
+
+env:
+  EXPECTED: "Stack: 00000000 00000000 00000000"
 
 jobs:
-  build-linux:
+  linux:
     runs-on: ubuntu-latest
-    name: build-linux-${{ matrix.config.target }}
+    name: linux-${{ matrix.config.target }}
     timeout-minutes: 10
 
     strategy:
       fail-fast: false
       matrix:
         config:
-        - {target: clang,       cc: clang,      }
-        - {target: clang-x86,   cc: clang,      flags: "-m32",    install: "gcc-multilib"   }
-        - {target: gcc,         cc: gcc,        }
-        - {target: gcc-debug,   cc: gcc,        flags: "-O0 -g3"   }
-        - {target: gcc-x86,     cc: gcc,        flags: "-m32",    install: "gcc-multilib"   }
+        - {target: clang,       cc: clang,  }
+        - {target: clang-x86,   cc: clang,  cflags: -m32,       install: gcc-multilib   }
+        - {target: gcc,         cc: gcc,    }
+        - {target: gcc-x86,     cc: gcc,    cflags: -m32,       install: gcc-multilib   }
+        - {target: gcc-debug,   cc: gcc,    cflags: -O0 -g3     }
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7
     - name: Install ${{ matrix.config.install }}
       if: ${{ matrix.config.install }}
       run: |
         sudo apt update
-        sudo apt install ${{ matrix.config.install }}
+        sudo apt install -y ${{ matrix.config.install }}
     - name: Build
-      run: |
-        ${{ matrix.config.cc }} main.c -I./src -Os -fPIC ${{ matrix.config.flags }} -o ./interp
+      run: ${{ matrix.config.cc }} main.c -I./src -Os -fPIC ${{ matrix.config.cflags }} -o ./interp
     - name: Test
       run: |
-        ./interp
-        
-  build-mac:
-    runs-on: macos-latest
-    timeout-minutes: 10
+        ./interp | tee out.txt
+        grep -q "^$EXPECTED" out.txt
 
-    steps:
-    - uses: actions/checkout@v2
-    - name: Build
-      run: |
-        clang main.c -I./src -Os -fPIC -o ./interp
-    - name: Test
-      run: |
-        ./interp
-        
-  build-windows:
-    runs-on: windows-latest
-    timeout-minutes: 10
-
-    steps:
-    - uses: actions/checkout@v2
-    - name: Install LLVM
-      shell: powershell
-      run: |
-        Invoke-Expression (New-Object System.Net.WebClient).DownloadString('https://get.scoop.sh')
-        scoop install llvm --global
-        # Scoop modifies the PATH so we make the modified PATH global
-        echo "::set-env name=PATH::$env:PATH"
-    - name: Build x64
-      run: clang -m64 main.c -I./src -Os -o ./interp-x64.exe
-    - name: Build x86
-      run: clang -m32 main.c -I./src -Os -o ./interp-x86.exe
-    - name: Test x64
-      run: ./interp-x64.exe
-    - name: Test x86
-      run: ./interp-x86.exe
-
-  build-wasi:
+  # All dispatch methods (the other jobs build the default one, USE_INLINE)
+  modes:
     runs-on: ubuntu-latest
+    name: mode-${{ matrix.cc }}-${{ matrix.mode }}
     timeout-minutes: 10
 
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [clang, gcc]
+        mode: [DTC, TTC, SWITCH, TAIL_CALLS, CALLS]
+
     steps:
-    - uses: actions/checkout@v2
-    - name: Install Python dependencies
-      run: |
-        python3 -m pip install pip==20.1.1
-        python3 -m pip install --upgrade setuptools wheel
-        pip3 --version
-    - name: Install Wasienv
-      env:
-        WASMER_RELEASE_TAG: "0.17.1"
-      run: curl https://raw.githubusercontent.com/wasienv/wasienv/master/install.sh | sh
+    - uses: actions/checkout@v7
     - name: Build
-      run: |
-        source $HOME/.wasienv/wasienv.sh
-        wasicc main.c -I./src -Os -o interp.wasm
+      run: ${{ matrix.cc }} main.c -I./src -Os -fPIC -DUSE_${{ matrix.mode }} -o ./interp
     - name: Test
       run: |
-        source $HOME/.wasmer/wasmer.sh
-        wasmer interp.wasm
+        ./interp | tee out.txt
+        grep -q "^$EXPECTED" out.txt
 
-  build-cross-qemu:
-    runs-on: ubuntu-latest
-    name: build-cross-qemu-${{ matrix.config.target }}
+  macos:
+    runs-on: ${{ matrix.config.os }}
+    name: macos-${{ matrix.config.target }}
     timeout-minutes: 10
 
     strategy:
       fail-fast: false
       matrix:
         config:
-        - {target: arm,     toolchain: gcc-arm-linux-gnueabi,     cc: arm-linux-gnueabi-gcc,      qemu: qemu-arm-static     }
-        - {target: armhf,   toolchain: gcc-arm-linux-gnueabihf,   cc: arm-linux-gnueabihf-gcc,    qemu: qemu-arm-static     }
-        - {target: aarch64, toolchain: gcc-aarch64-linux-gnu,     cc: aarch64-linux-gnu-gcc,      qemu: qemu-aarch64-static }
-        - {target: riscv64, toolchain: gcc-riscv64-linux-gnu,     cc: riscv64-linux-gnu-gcc,      qemu: qemu-riscv64-static }
-        - {target: mips,    toolchain: gcc-mips-linux-gnu,        cc: mips-linux-gnu-gcc,         qemu: qemu-mips-static     }
-        - {target: mipsel,  toolchain: gcc-mipsel-linux-gnu,      cc: mipsel-linux-gnu-gcc,       qemu: qemu-mipsel-static   }
+        - {target: arm64,   os: macos-latest    }
+        - {target: intel,   os: macos-15-intel  }
 
     steps:
-    - uses: actions/checkout@v2
-    - name: Install QEMU
-      env:
-        QEMU_SRC: "http://archive.ubuntu.com/ubuntu/pool/universe/q/qemu"
-        QEMU_VER: "qemu-user-static_4\\.2-.*_amd64.deb$"
-      run: |
-        DEB=`curl -s $QEMU_SRC/ | grep -o -E 'href="([^"#]+)"' | cut -d'"' -f2 | grep $QEMU_VER | tail -1`
-        wget $QEMU_SRC/$DEB
-        sudo dpkg -i $DEB
-    - name: Install ${{ matrix.config.toolchain }}
-      run: |
-        sudo apt update
-        sudo apt install ${{ matrix.config.toolchain }}
+    - uses: actions/checkout@v7
     - name: Build
-      run: |
-        ${{ matrix.config.cc }} main.c -I./src -Os -fPIC -lm -static -o ./interp
+      run: clang main.c -I./src -Os -fPIC -o ./interp
     - name: Test
       run: |
-        ${{ matrix.config.qemu }} ./interp
+        ./interp | tee out.txt
+        grep -q "^$EXPECTED" out.txt
 
-  build-pio:
+  windows:
+    runs-on: windows-latest
+    name: windows-${{ matrix.config.target }}
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+        - {target: clang-x64,   cflags: -m64    }
+        - {target: clang-x86,   cflags: -m32    }
+
+    steps:
+    - uses: actions/checkout@v7
+    - name: Build
+      run: clang main.c -I./src -Os ${{ matrix.config.cflags }} -o ./interp.exe
+    - name: Test
+      run: |
+        ./interp.exe | tee out.txt
+        grep -q "^$EXPECTED" out.txt
+
+  wasi:
     runs-on: ubuntu-latest
-    name: build-pio-${{ matrix.config.target }}
+    timeout-minutes: 10
+
+    env:
+      WASI_VERSION: 34
+      WASI_VERSION_FULL: "34.0"
+
+    steps:
+    - uses: actions/checkout@v7
+    - name: Install WASI SDK
+      run: |
+        mkdir -p .toolchains
+        cd .toolchains
+        WASI_TAR=wasi-sdk-${WASI_VERSION_FULL}-x86_64-linux.tar.gz
+        wget -q https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_VERSION}/${WASI_TAR}
+        tar xf ${WASI_TAR}
+        echo "WASI_SDK_PATH=${GITHUB_WORKSPACE}/.toolchains/wasi-sdk-${WASI_VERSION_FULL}-x86_64-linux" >> $GITHUB_ENV
+    - name: Install Wasmtime
+      run: |
+        curl https://wasmtime.dev/install.sh -sSf | bash -s -- --version v48.0.1
+        echo "$HOME/.wasmtime/bin" >> $GITHUB_PATH
+    - name: Build
+      run: |
+        ${WASI_SDK_PATH}/bin/clang --target=wasm32-wasip1 --sysroot=${WASI_SDK_PATH}/share/wasi-sysroot \
+          main.c -I./src -Os -o ./interp.wasm
+    - name: Test
+      run: |
+        wasmtime run ./interp.wasm | tee out.txt
+        grep -q "^$EXPECTED" out.txt
+
+  cross-qemu:
+    runs-on: ubuntu-latest
+    name: cross-qemu-${{ matrix.config.target }}
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+        - {target: arm,       toolchain: gcc-arm-linux-gnueabi,     cc: arm-linux-gnueabi-gcc,      qemu: qemu-arm-static       }
+        - {target: armhf,     toolchain: gcc-arm-linux-gnueabihf,   cc: arm-linux-gnueabihf-gcc,    qemu: qemu-arm-static       }
+        - {target: aarch64,   toolchain: gcc-aarch64-linux-gnu,     cc: aarch64-linux-gnu-gcc,      qemu: qemu-aarch64-static   }
+        - {target: riscv64,   toolchain: gcc-riscv64-linux-gnu,     cc: riscv64-linux-gnu-gcc,      qemu: qemu-riscv64-static   }
+        - {target: mips,      toolchain: gcc-mips-linux-gnu,        cc: mips-linux-gnu-gcc,         qemu: qemu-mips-static      }
+        - {target: mipsel,    toolchain: gcc-mipsel-linux-gnu,      cc: mipsel-linux-gnu-gcc,       qemu: qemu-mipsel-static    }
+
+    steps:
+    - uses: actions/checkout@v7
+    - name: Install QEMU and ${{ matrix.config.toolchain }}
+      run: |
+        sudo apt update
+        sudo apt install -y qemu-user-static ${{ matrix.config.toolchain }}
+    - name: Build
+      run: ${{ matrix.config.cc }} main.c -I./src -Os -fPIC -static -o ./interp
+    - name: Test
+      run: |
+        ${{ matrix.config.qemu }} ./interp | tee out.txt
+        grep -q "^$EXPECTED" out.txt
+
+  platformio:
+    runs-on: ubuntu-latest
+    name: pio-${{ matrix.config.target }}
     timeout-minutes: 10
 
     strategy:
@@ -144,14 +186,14 @@ jobs:
         - {target: k210,        env: SipeedMAIX   }
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7
     - name: Set up Python
-      uses: actions/setup-python@v1
+      uses: actions/setup-python@v6
       with:
-        python-version: '3.x'
+        python-version: 3.x
     - name: Install PlatformIO
       run: |
         python -m pip install --upgrade pip
-        pip install -U platformio
+        pip install --upgrade platformio
     - name: Build
       run: pio run -e ${{ matrix.config.env }}

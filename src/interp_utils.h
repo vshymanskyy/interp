@@ -81,7 +81,7 @@ void mempatch(void* dest, size_t len, size_t dummy, size_t value) {
 
             return heap_caps_malloc(ALLOC_EXEC_PAGE_SIZE, MALLOC_CAP_EXEC);
         }
-    #elif defined(__riscv)
+    #elif defined(__riscv) && !defined(__linux__)
         #define USE_ALLOC_STATIC
     #elif defined(__linux__) || defined(__APPLE__)
         #include <unistd.h>
