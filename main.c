@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include <time.h>
 
 // Select interpreter mode (or pass i.e. -DUSE_SWITCH):
 //#define USE_DTC           // Direct Threaded Code
@@ -11,8 +12,11 @@
 //#define USE_CALLS         // Calls Loop
 #if !defined(USE_DTC) && !defined(USE_TTC) && !defined(USE_SWITCH) && \
     !defined(USE_TAIL_CALLS) && !defined(USE_CALLS) && !defined(USE_INLINE)
-  #if defined(_MSC_VER) && !defined(__clang__)
-    #define USE_SWITCH      // MSVC supports only SWITCH, CALLS, TAIL_CALLS
+  #if defined(_MSC_VER) && !defined(__clang__) && (defined(_M_X64) || defined(_M_ARM64))
+    #define USE_TAIL_CALLS  // MSVC supports only SWITCH, CALLS, TAIL_CALLS (fastest).
+                            // Needs optimization (/O1, /O2): unoptimized, the tail calls grow the stack
+  #elif defined(_MSC_VER) && !defined(__clang__)
+    #define USE_SWITCH      // 32-bit x86: MSVC can't guarantee the tail calls
   #else
     #define USE_INLINE      // Machine Code Inlining
   #endif
@@ -151,18 +155,26 @@ void** example_1(void** vPC)
     return vPC;
 }
 
+// The same loop as example_1, in C: the native reference
 void native_example_1()
 {
-    volatile size_t i = LOOP_COUNT;    
-    while (i--) { }
+    volatile size_t i = LOOP_COUNT;
+    while (i--) {
+        ASM_NOP(1); ASM_NOP(2); ASM_NOP(1); ASM_NOP(3);
+        ASM_NOP(1); ASM_NOP(4); ASM_NOP(1); ASM_NOP(5);
+    }
+}
+
+static double now_ms(void)
+{
+    struct timespec ts;
+    timespec_get(&ts, TIME_UTC);
+    return ts.tv_sec * 1e3 + ts.tv_nsec / 1e6;
 }
 
 int main()
 {
     DBG_PRINTF("Initializing...\n");
-
-    //native_example_1();
-    //return 0;
 
     interp_init();
 
@@ -182,8 +194,15 @@ int main()
 
     DBG_PRINTF("Code: %td bytes\n", (char*)prog_end-(char*)prog);
 
+    double t = now_ms();
     interp_run(prog);
-    
+    double vm_time = now_ms() - t;
+
+    t = now_ms();
+    native_example_1();
+    double native_time = now_ms() - t;
+
+    DBG_PRINTF("Time: %.1f ms (native: %.1f ms)\n", vm_time, native_time);
     DBG_PRINTF("Stack: %08zx %08zx %08zx\n", gStack[STACK_SIZE-1], gStack[STACK_SIZE-2], gStack[STACK_SIZE-3]);
 
     return 0;

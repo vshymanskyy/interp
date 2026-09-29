@@ -51,6 +51,11 @@
     #if __has_attribute(musttail)
         #define MUSTTAIL                __attribute__((musttail))
     #endif
+#elif defined(_MSC_VER) && (defined(_M_X64) || defined(_M_ARM64)) && \
+      defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
+    // MSVC x64/ARM64, C23 mode (/std:clatest). Without optimization, fails the build (C4737)
+    // instead of overflowing the stack. MSVC can't guarantee these tail calls on 32-bit x86
+    #define MUSTTAIL                    [[msvc::musttail]]
 #endif
 #ifndef MUSTTAIL
     #define MUSTTAIL

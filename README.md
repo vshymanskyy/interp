@@ -24,7 +24,7 @@ Interpreter dispatch overhead is often the primary bottleneck in bytecode execut
 **interp** implements and evaluates six distinct dispatch mechanisms within a single unified codebase, including an ultra-low-overhead **Machine Code Inlining** engine. Rather than interpreting bytecodes at runtime, the inlining engine copies precompiled native instruction snippets into an executable buffer, patches immediate values and branch offsets in-memory, flushes the CPU instruction cache, and jumps straight into the synthesized native code.
 
 > **Compiler Notes:**
-> - **MSVC** does not support GNU computed gotos (`&&label`) or machine code inlining. Selecting `USE_INLINE`, `USE_DTC`, or `USE_TTC` with MSVC fails the build; `main.c` defaults to `USE_SWITCH` on MSVC.
+> - **MSVC** does not support GNU computed gotos (`&&label`) or machine code inlining. Selecting `USE_INLINE`, `USE_DTC`, or `USE_TTC` with MSVC fails the build; `main.c` defaults to `USE_TAIL_CALLS` on MSVC x64 and ARM64, and to `USE_SWITCH` on 32-bit x86, where MSVC can't guarantee the tail calls.
 > - **WebAssembly (WASI)** environments cannot mark linear memory as executable without runtime JIT extensions; `interp.h` automatically falls back to `USE_DTC`.
 
 ---
@@ -94,11 +94,12 @@ interp.exe
 ```
 
 #### Using Microsoft Visual C++ (`cl.exe`):
-MSVC supports `USE_SWITCH` (the default), `USE_CALLS`, and `USE_TAIL_CALLS`:
+MSVC supports `USE_TAIL_CALLS` (the default on x64 and ARM64), `USE_SWITCH` (the default on 32-bit x86), and `USE_CALLS`:
 ```cmd
-cl /nologo /O2 /std:c11 /W3 /I src /DUSE_SWITCH main.c /Fe:interp.exe
+cl /nologo /O2 /std:clatest /W3 /I src main.c /Fe:interp.exe
 interp.exe
 ```
+`USE_TAIL_CALLS` needs optimization (`/O1` or `/O2`); without it, each VM instruction grows the stack until it overflows. With `/std:clatest`, the build uses `[[msvc::musttail]]`, so an unoptimized build fails to compile (error C4737) instead of crashing.
 
 ---
 
@@ -111,10 +112,26 @@ The test runner in [`main.c`](main.c) executes a multi-stage validation suite up
 
 ```
 Initializing...
-Generating Code @ 0x7f354ab9c000
-Code: 84 bytes
+Stack: 18 48879
+Stack: 9725 48879
+Generating Code @ 0x75c6b7da2000
+Instructions: 1000000000
+Code: 80 bytes
+Time: 53.1 ms (native: 36.2 ms)
 Stack: 00000000 00000000 00000000
 ```
+
+The two `Stack: ...` lines before code generation are the self-tests (`PRINT` output). `Time` is the benchmark run; `native` is the same loop written in plain C, compiled with the same compiler and flags.
+
+### Benchmark results
+
+Time per VM instruction for the `example_1` loop, built with `-O2` (`/O2` for MSVC), sorted from fastest to slowest by each method's best compiler. The C loop is the native reference.
+
+![Nanoseconds per VM instruction for each dispatch method: gcc 16.2, clang 23.1 and MSVC 19.51](docs/benchmark.svg)
+
+Machine Code Inlining takes 1.4× the time of native code with gcc and 1.6× with clang. The threaded methods (DTC, TTC, tail calls) are 4–6× slower than inlining. Switch dispatch depends heavily on the compiler: clang's build is about 3× faster than gcc's, with MSVC in between. Calls-loop dispatch is the slowest with every compiler.
+
+Measured on an Intel Core Ultra 7 258V: gcc 16.2 ([cross-tools/musl-cross](https://github.com/cross-tools/musl-cross)) and clang 23.1.0 (official LLVM release) under WSL2 (Ubuntu 24.04), both linking statically, and MSVC 19.51 (x64) natively on Windows 11. Each value is the median of 7 interleaved runs pinned to a performance core. MSVC's C loop runs 10–25% slower than gcc's and clang's, so compare methods against their own compiler's C loop. Results on other machines will differ. With `-Os` (`/O1`), every dispatch method runs within about 10% of its `-O2` time, except MSVC's switch dispatch, which is 40% faster at `/O1`.
 
 ---
 

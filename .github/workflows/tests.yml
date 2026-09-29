@@ -134,7 +134,7 @@ jobs:
         arch: ${{ matrix.config.arch }}
     - name: Build
       shell: cmd
-      run: cl /nologo /O2 /std:c11 /W3 /I src /DUSE_${{ matrix.mode }} main.c /Fe:interp.exe
+      run: cl /nologo /O2 /std:clatest /W3 /I src /DUSE_${{ matrix.mode }} main.c /Fe:interp.exe
     - name: Test
       run: |
         ./interp.exe | tee out.txt
