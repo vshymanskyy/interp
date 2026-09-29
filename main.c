@@ -32,7 +32,33 @@ void** example_0(void** vPC)
     return vPC;
 }
 
-#define LOOP_COUNT 100*1000000
+// Exercises the other ops. Labels can only refer backwards, so the code
+// starts after the PRINT+HALT stub, which the final JMP targets
+void** example_2(void** vPC, void*** entry)
+{
+    LABEL(done);
+        PRINT();
+        HALT();
+    *entry = vPC;
+        PUSH(0xBEEF);                   // Sentinel
+        PUSH(10);  PUSH(5);  ADD();     // 15
+        PUSH(4);   MUL();               // 60
+        PUSH(6);   SUB();               // 54
+        PUSH(3);   DIV();               // 18
+        INCN(3);   DECN(2);             // 19
+        INC();     DEC();    DEC();     // 18
+        PUSH(3);                        // Count down to 0
+    LABEL(loop);
+        DEC();
+        DUP();
+        JNZP(loop);
+        DROP();
+        JMP(done);
+
+    return vPC;
+}
+
+#define LOOP_COUNT (100*1000000)
 
 void** example_1(void** vPC)
 {
@@ -70,6 +96,21 @@ int main()
 
     interp_init();
 
+    void** test = (void**)malloc_exec();
+    ASSERT(test);
+
+    void** test_entry;
+    void** test_end = example_2(test, &test_entry);
+    finalize_exec(test, test_end);
+
+    interp_run(test_entry);
+
+    if (gStack[STACK_SIZE-1] != 0xBEEF || gStack[STACK_SIZE-2] != 18) {
+        DBG_PRINTF("Self-test FAILED\n");
+        return 1;
+    }
+    memset(gStack, 0, sizeof(gStack));
+
     void** prog = (void**)malloc_exec();
     ASSERT(prog);
 
@@ -78,7 +119,7 @@ int main()
     void** prog_end = example_1(prog);
     finalize_exec(prog, prog_end);
 
-    DBG_PRINTF("Code: %zd bytes\n", (char*)prog_end-(char*)prog);
+    DBG_PRINTF("Code: %td bytes\n", (char*)prog_end-(char*)prog);
 
     interp_run(prog);
     

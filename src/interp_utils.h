@@ -1,9 +1,19 @@
- 
+#ifndef INTERP_UTILS_H
+#define INTERP_UTILS_H
+
+#include <stdlib.h>
+
 #define TOSTR(x)        #x
 #define STRINGIFY(x)    TOSTR(x)
 #define EOL             "\n"
 
-#define ASSERT(expr)                    if (!(expr)) { DBG_PRINTF("Assertion failed (%s) at %s:%d\n", #expr , __FILE__, __LINE__); for(;;); }
+#if defined(ARDUINO)
+    #define ASSERT_HALT()               for(;;) {}                  // Keep the message on the console
+#else
+    #define ASSERT_HALT()               { fflush(stdout); abort(); }
+#endif
+
+#define ASSERT(expr)                    do { if (!(expr)) { DBG_PRINTF("Assertion failed (%s) at %s:%d\n", #expr , __FILE__, __LINE__); ASSERT_HALT(); } } while (0)
 
 #define BIT_BLEND(a,b,mask)             (((a) & ~mask) | ((b) & mask))
 
@@ -11,6 +21,24 @@
 #define ALIGN_UP(addr,boundary)         (((size_t)(addr) + ((boundary) - 1)) & -(boundary))
 
 #define IS_ALIGNED(addr,b)              (0 == ((size_t)(addr) & ((b)-1)))
+
+#if defined(_MSC_VER) && !defined(__clang__)
+    #include <intrin.h>
+    #define NOINLINE                    __declspec(noinline)
+    #define ASM_NOP(id)                 __nop()
+#else
+    #define NOINLINE                    __attribute__((noinline))
+    #define ASM_NOP(id)                 asm("nop; #" #id)
+#endif
+
+#if defined(__has_attribute)
+    #if __has_attribute(musttail)
+        #define MUSTTAIL                __attribute__((musttail))
+    #endif
+#endif
+#ifndef MUSTTAIL
+    #define MUSTTAIL
+#endif
 
 #ifndef ALLOC_EXEC_PAGE_SIZE
 #define ALLOC_EXEC_PAGE_SIZE 1024
@@ -36,10 +64,10 @@ static inline
 void mempatch(void* dest, size_t len, size_t dummy, size_t value) {
     char* mem = (char*)dest;
     char* end = mem+len-sizeof(dummy);
-    
+
     // Simple implementation of memmem (not available on all platforms)
     void* off = NULL;
-    while (mem < end) {
+    while (mem <= end) {
         if (!memcmp(mem, &dummy, sizeof(dummy))) {
             off = mem;
             break;
@@ -49,8 +77,10 @@ void mempatch(void* dest, size_t len, size_t dummy, size_t value) {
     ASSERT(off);
 
     // Patch memory
-    *(size_t*)off = value;
+    memcpy(off, &value, sizeof(value));
 }
+
+// Each platform provides alloc_exec(), which returns the buffer and its usable size
 
 #if defined(USE_INLINE)
 
@@ -58,27 +88,30 @@ void mempatch(void* dest, size_t len, size_t dummy, size_t value) {
         // TODO: Couldn't find any way to allocate IRAM on ESP8266,
         // so here is a scratchpad (it's content is overwritten with the actual code)
         static
-        void* IRAM_ATTR __attribute__ ((noinline)) malloc_exec()
+        void* IRAM_ATTR __attribute__ ((noinline)) alloc_exec(size_t* size)
         {
             volatile bool dummy = true;
             if (dummy) {
+                *size = ALLOC_EXEC_PAGE_SIZE;
                 return (void*)ALIGN_UP(&&scratchpad, 4);
             }
 
         scratchpad:
-            asm volatile(".fill " STRINGIFY(ALLOC_EXEC_PAGE_SIZE) ",1,0xFF");
+            // Extra 4 bytes to allow for the alignment
+            asm volatile(".fill " STRINGIFY(ALLOC_EXEC_PAGE_SIZE) "+4,1,0xFF");
 
             return 0;
         }
     #elif defined(ESP32)
         static
-        void* malloc_exec()
+        void* alloc_exec(size_t* size)
         {
             DBG_PRINTF("CAP_EXEC free: %u Kb, max block: %u Kb\n",
                         //heap_caps_get_total_size(MALLOC_CAP_EXEC)/1024,
                         heap_caps_get_free_size(MALLOC_CAP_EXEC)/1024,
                         heap_caps_get_largest_free_block(MALLOC_CAP_EXEC)/1024);
 
+            *size = ALLOC_EXEC_PAGE_SIZE;
             return heap_caps_malloc(ALLOC_EXEC_PAGE_SIZE, MALLOC_CAP_EXEC);
         }
     #elif defined(__riscv) && !defined(__linux__)
@@ -92,13 +125,14 @@ void mempatch(void* dest, size_t len, size_t dummy, size_t value) {
         #endif
 
         static
-        void* malloc_exec()
+        void* alloc_exec(size_t* size)
         {
             int flags = MAP_ANONYMOUS | MAP_PRIVATE;
         #if defined(__APPLE__)
             flags |= MAP_JIT;       // Required for RWX memory on Apple Silicon
         #endif
-            void* mem = mmap(0,  getpagesize(),
+            *size = getpagesize();
+            void* mem = mmap(0, *size,
                  PROT_READ | PROT_WRITE | PROT_EXEC,
                  flags, -1, 0);
             if (mem == MAP_FAILED) {
@@ -125,13 +159,21 @@ void mempatch(void* dest, size_t len, size_t dummy, size_t value) {
     #elif defined(_WIN32)
         #include <windows.h>
         static
-        void* malloc_exec()
+        void* alloc_exec(size_t* size)
         {
             SYSTEM_INFO system_info;
             GetSystemInfo(&system_info);
 
-            size_t page_size = system_info.dwPageSize;
-            return VirtualAlloc(NULL, page_size, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+            *size = system_info.dwPageSize;
+            return VirtualAlloc(NULL, *size, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+        }
+
+        // Make generated code visible to instruction fetch
+        #define HAVE_FINALIZE_EXEC
+        static
+        void finalize_exec(void* start, void* end)
+        {
+            FlushInstructionCache(GetCurrentProcess(), start, (char*)end - (char*)start);
         }
     #else
         #define USE_ALLOC_HEAP
@@ -143,17 +185,18 @@ void mempatch(void* dest, size_t len, size_t dummy, size_t value) {
 // Generic
 #if defined(USE_ALLOC_STATIC)
     static
-    void* malloc_exec()
+    void* alloc_exec(size_t* size)
     {
-        static char gProg[ALLOC_EXEC_PAGE_SIZE];
+        static char gProg[ALLOC_EXEC_PAGE_SIZE + 4];    // Extra 4 bytes to allow for the alignment
+        *size = ALLOC_EXEC_PAGE_SIZE;
         return (void*)ALIGN_UP(gProg, 4);
     }
 #elif defined(USE_ALLOC_HEAP)
-    #include <stdlib.h>
     static
-    void* malloc_exec()
+    void* alloc_exec(size_t* size)
     {
-        return (void*)ALIGN_UP(malloc(ALLOC_EXEC_PAGE_SIZE), 4);
+        *size = ALLOC_EXEC_PAGE_SIZE;
+        return malloc(ALLOC_EXEC_PAGE_SIZE);
     }
 #endif
 
@@ -161,3 +204,17 @@ void mempatch(void* dest, size_t len, size_t dummy, size_t value) {
     static inline
     void finalize_exec(void* start, void* end) { (void)start; (void)end; }
 #endif
+
+// End of the buffer returned by the last malloc_exec(), checked when emitting code
+static char* gExecEnd;
+
+static
+void* malloc_exec()
+{
+    size_t size = 0;
+    char* mem = (char*)alloc_exec(&size);
+    gExecEnd = mem ? mem + size : NULL;
+    return mem;
+}
+
+#endif // INTERP_UTILS_H

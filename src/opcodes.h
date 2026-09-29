@@ -14,11 +14,11 @@
     #define OP_IMPL_IMM             OP_IMPL
 #endif
 
-OP_IMPL(dummy1, { asm("nop; #1"); })
-OP_IMPL(dummy2, { asm("nop; #2"); })
-OP_IMPL(dummy3, { asm("nop; #3"); })
-OP_IMPL(dummy4, { asm("nop; #4"); })
-OP_IMPL(dummy5, { asm("nop; #5"); })
+OP_IMPL(dummy1, { ASM_NOP(1); })
+OP_IMPL(dummy2, { ASM_NOP(2); })
+OP_IMPL(dummy3, { ASM_NOP(3); })
+OP_IMPL(dummy4, { ASM_NOP(4); })
+OP_IMPL(dummy5, { ASM_NOP(5); })
 
 OP_IMPL(drop, {
     vSP++;
@@ -48,8 +48,9 @@ OP_IMPL(mul, {
     vSP++;
 })
 
-OP_IMPL(div, {
-    vSP[2] /= vSP[1];
+// Calls interp_div by address, as the division may need a runtime library call
+OP_IMPL_IMM(div, {
+    vSP[2] = ((size_t (*)(size_t, size_t))imm)(vSP[2], vSP[1]);
     vSP++;
 })
 
@@ -69,14 +70,9 @@ OP_IMPL(dec, {
     vSP[1] -= 1;
 })
 
-OP_IMPL(print, {
-    DBG_PRINTF("Stack:");
-    size_t* sp = vSP+1;
-    while(sp < &gStack[STACK_SIZE]) {
-        DBG_PRINTF(" %zu", *sp++);
-    }
-    DBG_PRINTF("\n");
-    //usleep(10 * 1000);
+// Calls interp_print by address
+OP_IMPL_IMM(print, {
+    ((void (*)(size_t*))imm)(vSP);
 })
 
 OP_IMPL_IMM(jmp, {
