@@ -87,6 +87,98 @@ OP_IMPL_IMM(jnz, {
     if (vSP[1]) JUMP(imm);
 })
 
+// Indirect control flow
+
+OP_IMPL(swap, {
+    size_t tmp = vSP[1];
+    vSP[1] = vSP[2];
+    vSP[2] = tmp;
+})
+
+OP_IMPL(jmpi, {                             // [addr] -> []
+    size_t addr = *++vSP;
+    JUMP(addr);
+})
+
+// Comparison (unsigned), result is 1 or 0
+
+OP_IMPL(eq, {
+    vSP[2] = (vSP[2] == vSP[1]);
+    vSP++;
+})
+
+OP_IMPL(ne, {
+    vSP[2] = (vSP[2] != vSP[1]);
+    vSP++;
+})
+
+OP_IMPL(lt, {
+    vSP[2] = (vSP[2] < vSP[1]);
+    vSP++;
+})
+
+OP_IMPL(gt, {
+    vSP[2] = (vSP[2] > vSP[1]);
+    vSP++;
+})
+
+// Bitwise
+
+OP_IMPL(band, {
+    vSP[2] &= vSP[1];
+    vSP++;
+})
+
+OP_IMPL(bor, {
+    vSP[2] |= vSP[1];
+    vSP++;
+})
+
+OP_IMPL(bxor, {
+    vSP[2] ^= vSP[1];
+    vSP++;
+})
+
+OP_IMPL(bnot, {
+    vSP[1] = ~vSP[1];
+})
+
+OP_IMPL(shl, {
+    vSP[2] <<= (vSP[1] & (sizeof(size_t)*8 - 1));
+    vSP++;
+})
+
+OP_IMPL(shr, {
+    vSP[2] >>= (vSP[1] & (sizeof(size_t)*8 - 1));
+    vSP++;
+})
+
+// Memory access. The immediate is the memory base address (gMemory),
+// the address on the stack is an offset into it (unaligned word access is allowed).
+// Bounds are checked in all modes except INLINE
+
+OP_IMPL_IMM(load, {                         // [addr] -> [value]
+    OP_ASSERT(vSP[1] + sizeof(size_t) <= MEMORY_SIZE);
+    vSP[1] = LOAD_UNALIGNED(imm + vSP[1]);
+})
+
+OP_IMPL_IMM(store, {                        // [value, addr] -> []
+    OP_ASSERT(vSP[1] + sizeof(size_t) <= MEMORY_SIZE);
+    STORE_UNALIGNED(imm + vSP[1], vSP[2]);
+    vSP += 2;
+})
+
+OP_IMPL_IMM(load8, {                        // [addr] -> [value]
+    OP_ASSERT(vSP[1] < MEMORY_SIZE);
+    vSP[1] = *(uint8_t*)(imm + vSP[1]);
+})
+
+OP_IMPL_IMM(store8, {                       // [value, addr] -> []
+    OP_ASSERT(vSP[1] < MEMORY_SIZE);
+    *(uint8_t*)(imm + vSP[1]) = (uint8_t)vSP[2];
+    vSP += 2;
+})
+
 // Should be always the last one
 OP_IMPL(halt, {
     FINISH();

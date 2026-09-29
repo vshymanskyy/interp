@@ -26,9 +26,25 @@
     #include <intrin.h>
     #define NOINLINE                    __declspec(noinline)
     #define ASM_NOP(id)                 __nop()
+    #define ALIGNED_ATTR(n)             __declspec(align(n))
 #else
     #define NOINLINE                    __attribute__((noinline))
     #define ASM_NOP(id)                 asm("nop; #" #id)
+    #define ALIGNED_ATTR(n)             __attribute__((aligned(n)))
+#endif
+
+// Unaligned word access. A packed struct makes the compiler emit the access inline:
+// memcpy may become a library call, which the copied (INLINE) op code can't make.
+// MSVC doesn't support the INLINE mode, so memcpy is fine there
+#if defined(_MSC_VER) && !defined(__clang__)
+    static inline size_t load_unaligned(const void* p)          { size_t v; memcpy(&v, p, sizeof(v)); return v; }
+    static inline void   store_unaligned(void* p, size_t v)     { memcpy(p, &v, sizeof(v)); }
+    #define LOAD_UNALIGNED(ptr)         load_unaligned((const void*)(ptr))
+    #define STORE_UNALIGNED(ptr,val)    store_unaligned((void*)(ptr), val)
+#else
+    typedef struct __attribute__((packed, may_alias)) { size_t v; } unaligned_size_t;
+    #define LOAD_UNALIGNED(ptr)         (((const unaligned_size_t*)(ptr))->v)
+    #define STORE_UNALIGNED(ptr,val)    (((unaligned_size_t*)(ptr))->v = (val))
 #endif
 
 #if defined(__has_attribute)

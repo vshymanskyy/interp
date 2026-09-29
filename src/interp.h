@@ -6,14 +6,10 @@
 #include <stdbool.h>
 #include <string.h>
 
-// MSVC handling
+// MSVC handling: no inline asm, no labels as values
 #if defined(_MSC_VER) && !defined(__clang__)
     #if defined(USE_INLINE) || defined(USE_DTC) || defined (USE_TTC)
-        #pragma message("MSVC compiler only supports SWITCH, CALLS, TAIL_CALLS => using SWITCH")
-        #undef USE_INLINE
-        #undef USE_DTC
-        #undef USE_TTC
-        #define USE_SWITCH
+        #error "MSVC compiler only supports SWITCH, CALLS, TAIL_CALLS dispatch methods"
     #endif
 #endif
 
@@ -25,12 +21,19 @@
 #endif
 
 #include "interp_utils.h"
-#define OP_ENUM
-#include "opcodes.h"
-#undef OP_ENUM
 
 #define STACK_SIZE 256
 static size_t gStack[STACK_SIZE] = { (size_t)-1, };
+
+// VM memory, accessed by LOAD/STORE
+#ifndef MEMORY_SIZE
+#define MEMORY_SIZE (16*1024)
+#endif
+static ALIGNED_ATTR(8) uint8_t gMemory[MEMORY_SIZE];     // Aligned for word accesses
+
+#define OP_ENUM
+#include "opcodes.h"
+#undef OP_ENUM
 
 // Native helpers, called by address (passed as an immediate), so that the INLINE mode
 // can copy the calling code
@@ -39,7 +42,7 @@ void interp_print(size_t* sp)
 {
     DBG_PRINTF("Stack:");
     for (sp++; sp < &gStack[STACK_SIZE]; sp++) {
-        DBG_PRINTF(" %lu", (unsigned long)*sp);
+        DBG_PRINTF(" %zu", *sp);
     }
     DBG_PRINTF("\n");
 }
@@ -70,13 +73,44 @@ size_t interp_div(size_t a, size_t b)
 #define PRINT()                     EMIT_OP_IMM(print,interp_print);// Print the stack
 #define HALT()                      EMIT_OP(halt);              // Stop VM
 
+#define SWAP()                      EMIT_OP(swap);              // Swap 2 top stack values
+#define JMPI()                      EMIT_OP(jmpi);              // Jump to the address on the stack (pop)
+#define CALL(lbl)                   do { void** ret_ = (void**)((char*)vPC + IMM_OP_LEN(push) + IMM_OP_LEN(jmp)); \
+                                         PUSH(ret_); JMP(lbl); } while (0)      // Push the return address, jump
+#define RET()                       JMPI()                      // Return to the address on the stack
+
+#define EQ()                        EMIT_OP(eq);                // Compare 2 top stack values (unsigned),
+#define NE()                        EMIT_OP(ne);                //   result is 1 or 0
+#define LT()                        EMIT_OP(lt);
+#define GT()                        EMIT_OP(gt);
+
+#define AND()                       EMIT_OP(band);              // Bitwise ops on 2 top stack values
+#define OR()                        EMIT_OP(bor);
+#define XOR()                       EMIT_OP(bxor);
+#define NOT()                       EMIT_OP(bnot);              // Invert stack top
+#define SHL()                       EMIT_OP(shl);               // Shift second by top (modulo word size)
+#define SHR()                       EMIT_OP(shr);
+
+#define LOAD()                      EMIT_OP_IMM(load,gMemory);  // [addr] -> [word at gMemory+addr]
+#define STORE()                     EMIT_OP_IMM(store,gMemory); // [value, addr] -> [], stores a word
+#define LOAD8()                     EMIT_OP_IMM(load8,gMemory); // [addr] -> [byte at gMemory+addr]
+#define STORE8()                    EMIT_OP_IMM(store8,gMemory);// [value, addr] -> [], stores a byte
+
 // Check that the emitted code fits into the buffer from malloc_exec()
 #define ASSERT_EMIT(len)            ASSERT(!gExecEnd || (char*)vPC + (len) <= gExecEnd)
+
+// Checks inside ops. Disabled in the INLINE mode: the copied op code can't call out (printf, abort)
+#if defined(USE_INLINE)
+    #define OP_ASSERT(expr)
+#else
+    #define OP_ASSERT(expr)         ASSERT(expr)
+#endif
 
 
 #if !defined(USE_INLINE)
     #define EMIT_PTR(val)           do { ASSERT_EMIT(sizeof(void*)); *vPC++ = (void*)(val); } while (0)
     #define EMIT_OP_IMM(op,imm)     do { EMIT_OP(op); EMIT_PTR((size_t)(imm)); } while (0)
+    #define IMM_OP_LEN(op)          (2*sizeof(void*))       // Size of an emitted op with an immediate
 
     #define GET_IMM(op)             register size_t imm = (size_t)*vPC++;
     #define JUMP(addr)              { vPC = (void**)(addr); NEXT(); }
@@ -357,7 +391,7 @@ size_t interp_div(size_t a, size_t b)
     #define EMIT_OP(op)             do { OpChunk* c = &gLabelTable[op_##op];    \
                                     ASSERT(c->addr); ASSERT(c->len > 0);        \
                                     ASSERT_EMIT(c->len);                        \
-                                    char buff[c->len+8];                        \
+                                    char buff[c->len+8] ALIGNED_ATTR(4);        \
                                     TEXT_READ(buff, c->addr, c->len);           \
                                     dump(buff, c->len);                         \
                                     TEXT_WRITE(vPC, buff, c->len);              \
@@ -366,12 +400,14 @@ size_t interp_div(size_t a, size_t b)
     #define EMIT_OP_IMM(op,imm)     do { OpChunk* c = &gLabelTable[op_##op];    \
                                     ASSERT(c->addr); ASSERT(c->len > 0);        \
                                     ASSERT_EMIT(c->len);                        \
-                                    char buff[c->len+8];                        \
+                                    char buff[c->len+8] ALIGNED_ATTR(4);        \
                                     TEXT_READ(buff, c->addr, c->len);           \
                                     mempatch(buff, c->len, PLACEHOLDER + (int)op_##op, (size_t)(imm));     \
                                     dump(buff, c->len);                         \
                                     TEXT_WRITE(vPC, buff, c->len);              \
                                     vPC = (void**)((char*)vPC + c->len); } while (0)
+
+    #define IMM_OP_LEN(op)          ((size_t)gLabelTable[op_##op].len)  // Size of an emitted op
 
     #define NEXT()                  not_implemented(); // Not implemented
 
@@ -406,7 +442,7 @@ size_t interp_div(size_t a, size_t b)
         #define OP_STORE_N(tgt,op,n)    { OpChunk* c = &gLabelTable[op_##tgt]; c->addr = OP_ADDR(op); c->len = (n);     \
                                           ASSERT(c->addr); ASSERT(c->len > 0);                                          \
                                           if (DUMP) {                                                                   \
-                                            char buff[c->len+8]; TEXT_READ(buff, c->addr, c->len);                      \
+                                            char buff[c->len+8] ALIGNED_ATTR(4); TEXT_READ(buff, c->addr, c->len);     \
                                             DBG_PRINTF("OP %s (%p, %d):", #tgt, c->addr, c->len); dump(buff, c->len);   \
                                           }                                                                             \
                                           ASSERT(IS_OP_ALIGNED(c->addr)); ASSERT(IS_OP_ALIGNED(c->len));                \
