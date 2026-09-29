@@ -361,6 +361,7 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
 
     static OpChunk gLabelTable[Opcode_qty];
     static void* gExitAddr;
+    static void* volatile gOpsBegin;    // only to keep the ops_begin anchor as a separate block
 
     static inline
     int TEXT_SECTION interp_run(void** prog)
@@ -395,11 +396,17 @@ static size_t gStack[STACK_SIZE] = { (size_t)-1, };
         #undef OP_SIZE
 
         gExitAddr = &&label_exit;
+        gOpsBegin = &&label_ops_begin_end;
+        (void)&&label_ops_begin;
 
         volatile bool dummy = true;
         if (dummy) {
             return 1;
         }
+
+        // The compiler may place the block that precedes the first op anywhere, losing its
+        // alignment. Start with an unused op, so every real op follows an aligned one
+        OP(ops_begin, {})
 
         #include "opcodes.h"
 
